@@ -1,0 +1,205 @@
+/** @import must precede all other statements */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  :root {
+    /* Light mode - using cybersecurity dark theme as default */
+    --background: 220 15% 8%;
+    --foreground: 200 10% 96%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 200 10% 96%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 200 10% 96%;
+
+    --primary: 194 100% 50%;
+    --primary-foreground: 220 15% 8%;
+
+    --secondary: 263 80% 50%;
+    --secondary-foreground: 200 10% 96%;
+
+    --muted: 220 15% 25%;
+    --muted-foreground: 200 10% 65%;
+
+    --accent: 194 100% 50%;
+    --accent-foreground: 220 15% 8%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 15%;
+    --ring: 194 100% 50%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 220 15% 8%;
+
+    --sidebar-foreground: 200 10% 96%;
+
+    --sidebar-primary: 194 100% 50%;
+
+    --sidebar-primary-foreground: 220 15% 8%;
+
+    --sidebar-accent: 263 80% 50%;
+
+    --sidebar-accent-foreground: 200 10% 96%;
+
+    --sidebar-border: 220 20% 20%;
+
+    --sidebar-ring: 194 100% 50%;
+  }
+
+  .dark {
+    --background: 220 15% 8%;
+    --foreground: 200 10% 96%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 200 10% 96%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 200 10% 96%;
+
+    --primary: 194 100% 50%;
+    --primary-foreground: 220 15% 8%;
+
+    --secondary: 263 80% 50%;
+    --secondary-foreground: 200 10% 96%;
+
+    --muted: 220 15% 25%;
+    --muted-foreground: 200 10% 65%;
+
+    --accent: 194 100% 50%;
+    --accent-foreground: 220 15% 8%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 15%;
+    --ring: 194 100% 50%;
+    --sidebar-background: 220 15% 8%;
+    --sidebar-foreground: 200 10% 96%;
+    --sidebar-primary: 194 100% 50%;
+    --sidebar-primary-foreground: 220 15% 8%;
+    --sidebar-accent: 263 80% 50%;
+    --sidebar-accent-foreground: 200 10% 96%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 194 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  :where(p, span, li, h1, h2, h3, h4, h5, h6, a, button, label, td, th) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre,
+  code {
+    overflow-x: auto;
+    white-space: pre;
+  }
+}
+
+/* Cybersecurity theme animations and effects */
+@layer components {
+  .glow-blue {
+    @apply shadow-[0_0_20px_rgba(0,204,255,0.5)];
+  }
+
+  .glow-purple {
+    @apply shadow-[0_0_20px_rgba(139,0,255,0.5)];
+  }
+
+  .glassmorphism {
+    @apply bg-white/10 backdrop-blur-md border border-white/20;
+  }
+
+  .cybersecurity-gradient {
+    @apply bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-500;
+  }
+
+  .card-gradient {
+    @apply bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-cyan-500/20;
+  }
+
+  .text-glow {
+    @apply text-cyan-400 drop-shadow-[0_0_10px_rgba(0,204,255,0.8)];
+  }
+
+  .button-glow {
+    @apply relative overflow-hidden transition-all duration-300;
+  }
+
+  .button-glow:hover {
+    @apply shadow-[0_0_15px_rgba(0,204,255,0.6)];
+  }
+
+  .grid-pattern {
+    background-image:
+      linear-gradient(0deg, transparent 24%, rgba(0, 204, 255, 0.05) 25%, rgba(0, 204, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 204, 255, 0.05) 75%, rgba(0, 204, 255, 0.05) 76%, transparent 77%, transparent),
+      linear-gradient(90deg, transparent 24%, rgba(0, 204, 255, 0.05) 25%, rgba(0, 204, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 204, 255, 0.05) 75%, rgba(0, 204, 255, 0.05) 76%, transparent 77%, transparent);
+    background-size: 50px 50px;
+  }
+}
+
+/* Keyframe animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 204, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 204, 255, 0.8);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-scan {
+    animation: scan-line 2s ease-in-out infinite;
+  }
+}
