@@ -80,6 +80,16 @@ The project addresses a practical gap: most users are exposed to cyber threats b
 - **Vitest** for tests
 - **Prettier** for formatting
 
+### AI Models and Orchestration
+- **Primary Logic Engine**: `gemini-2.5-flash`
+  - Usage: Email Scam Analyzer, URL Integrity Scanner, and AI Assistant reasoning.
+- **Voice Synthesis Engine**: `gemini-2.5-flash-preview-tts`
+  - Usage: Tactical voice responses with low latency.
+- **AI Framework**: Google Genkit 1.x
+  - Usage: prompt/flow orchestration and tool-calling patterns.
+- **API Key**: `GOOGLE_GENAI_API_KEY`
+  - Source: Google AI Studio.
+
 ## 5. Architecture Overview
 
 ### High-level pattern

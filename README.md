@@ -54,6 +54,21 @@ Most users face phishing, fraud, social engineering, and account compromise risk
 - **Vitest** for tests
 - **Prettier** for formatting
 
+## AI Stack
+
+### AI Models Used
+- **Primary Logic Engine**: `gemini-2.5-flash`
+  - *Usage*: Powers the Email Scam Analyzer, URL Integrity Scanner, and the core reasoning for the AI Assistant. Chosen for high speed and a large context window.
+- **Voice Synthesis Engine**: `gemini-2.5-flash-preview-tts`
+  - *Usage*: Powers the Tactical Voice Agent for low-latency text-to-speech.
+
+### AI Framework
+- **Google Genkit 1.x**: Orchestration layer for prompts, flows, and tool-calling logic.
+
+### API Key Management
+The AI logic requires a Google Gemini API key. In local development and production, use:
+- `GOOGLE_GENAI_API_KEY`: secret key from [Google AI Studio](https://aistudio.google.com/)
+
 ## Architecture
 
 ```text
