@@ -1,4 +1,4 @@
-﻿import { motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useState } from "react";
 import { Lock, Mail, Link2, BarChart3, Check, X } from "lucide-react";
 import { analyzeUrlRisk, type UrlRiskResult } from "@/lib/urlRisk";
@@ -9,7 +9,7 @@ export default function SecurityTools() {
   // Password Strength Checker
   const [password, setPassword] = useState("");
   const [passwordStrength, setPasswordStrength] = useState(0);
-  const [passwordFeedback, setPasswordFeedback] = useState("");
+  const [passwordFeedback, setPasswordFeedback] = useState<string[]>([]);
 
   const checkPasswordStrength = (pwd: string) => {
     setPassword(pwd);

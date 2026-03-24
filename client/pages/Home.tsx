@@ -1,4 +1,4 @@
-﻿import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { analyzeUrlRisk } from "@/lib/urlRisk";
@@ -103,7 +103,7 @@ export default function Home() {
     { number: "24/7", label: "Threat Coverage" },
   ];
 
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -114,7 +114,7 @@ export default function Home() {
     },
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,

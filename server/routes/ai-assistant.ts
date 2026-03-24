@@ -77,7 +77,10 @@ export const handleAiAssistantChat: RequestHandler = async (req, res) => {
     return res.json({ reply });
   } catch (error) {
     const { prompt = "", language = "en" } = (req.body || {}) as any;
-    const fallbackReply = buildLocalFallbackReply(String(prompt || ""), String(language || "en"));
+    const fallbackReply = buildLocalFallbackReply(
+      String(prompt || ""),
+      (language === "hi" ? "hi" : "en") as "en" | "hi"
+    );
     res.json({ reply: fallbackReply });
   }
 };
