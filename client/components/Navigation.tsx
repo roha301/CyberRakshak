@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { Menu, X, Shield } from "lucide-react";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -13,8 +13,7 @@ export default function Navigation() {
     { name: "Safety Checklist", path: "/safety-checklist" },
     { name: "Quiz", path: "/quiz" },
     { name: "Report Scam", path: "/report-scam" },
-    { name: "AI Assistant", path: "/ai-assistant" },
-    { name: "Security Tools", path: "/security-tools" },
+    { name: "Admin", path: "/admin" },
   ];
 
   return (
@@ -35,14 +34,27 @@ export default function Navigation() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1">
             {links.map((link) => (
-              <Link
+              <NavLink
                 key={link.path}
                 to={link.path}
-                className="px-3 py-2 text-sm font-medium text-foreground/80 hover:text-cyan-400 transition-colors duration-200 relative group"
+                end={link.path === "/"}
+                className={({ isActive }) =>
+                  `px-3 py-2 text-sm font-medium transition-colors duration-200 relative group ${
+                    isActive ? "text-cyan-400" : "text-foreground/80 hover:text-cyan-400"
+                  }`
+                }
               >
-                {link.name}
-                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-cyan-400 group-hover:w-full transition-all duration-300"></span>
-              </Link>
+                {({ isActive }) => (
+                  <>
+                    {link.name}
+                    <span
+                      className={`absolute bottom-0 left-0 h-0.5 bg-cyan-400 transition-all duration-300 ${
+                        isActive ? "w-full" : "w-0 group-hover:w-full"
+                      }`}
+                    />
+                  </>
+                )}
+              </NavLink>
             ))}
           </div>
 
@@ -64,14 +76,21 @@ export default function Navigation() {
         >
           <div className="px-2 pt-2 pb-4 space-y-1 border-t border-cyan-500/20">
             {links.map((link) => (
-              <Link
+              <NavLink
                 key={link.path}
                 to={link.path}
+                end={link.path === "/"}
                 onClick={() => setIsOpen(false)}
-                className="block px-3 py-2 rounded-lg text-base font-medium text-foreground/80 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors duration-200"
+                className={({ isActive }) =>
+                  `block px-3 py-2 rounded-lg text-base font-medium transition-colors duration-200 ${
+                    isActive
+                      ? "bg-cyan-500/10 text-cyan-400"
+                      : "text-foreground/80 hover:bg-cyan-500/10 hover:text-cyan-400"
+                  }`
+                }
               >
                 {link.name}
-              </Link>
+              </NavLink>
             ))}
           </div>
         </motion.div>

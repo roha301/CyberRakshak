@@ -1,13 +1,12 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { CheckCircle2, Clock, Shield } from "lucide-react";
+import { Check, CheckCircle2, Clock, Shield } from "lucide-react";
 import { ChecklistItem } from "@shared/api";
 
 export default function SafetyChecklist() {
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   useEffect(() => {
     fetchChecklist();
@@ -58,26 +57,64 @@ export default function SafetyChecklist() {
     }
   };
 
-  const uniqueCategories = [...new Set(items.map((item) => item.category))];
-  const filteredItems = selectedCategory
-    ? items.filter((item) => item.category === selectedCategory)
-    : items;
+  const getPriorityLabel = (priority: ChecklistItem["priority"]) => {
+    switch (priority) {
+      case "high":
+        return "High";
+      case "medium":
+        return "Medium";
+      default:
+        return "Normal";
+    }
+  };
+
+  const priorityRank: Record<ChecklistItem["priority"], number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
+
+  const sortedItems = [...items].sort(
+    (a, b) => priorityRank[a.priority] - priorityRank[b.priority]
+  );
+
+  const highItems = sortedItems.filter((item) => item.priority === "high").slice(0, 2);
+  const mediumItems = sortedItems
+    .filter((item) => item.priority === "medium")
+    .slice(0, 2);
+  const normalItems = sortedItems.filter((item) => item.priority === "low").slice(0, 2);
+
+  const selectedItems: ChecklistItem[] = [];
+  const selectedIds = new Set<string>();
+  [...highItems, ...mediumItems, ...normalItems].forEach((item) => {
+    if (!selectedIds.has(item.id)) {
+      selectedItems.push(item);
+      selectedIds.add(item.id);
+    }
+  });
+
+  if (selectedItems.length < 6) {
+    for (const item of sortedItems) {
+      if (selectedItems.length >= 6) break;
+      if (!selectedIds.has(item.id)) {
+        selectedItems.push(item);
+        selectedIds.add(item.id);
+      }
+    }
+  }
+
+  const completionCount = Array.from(completedItems).filter((id) =>
+    selectedItems.find((item) => item.id === id)
+  ).length;
 
   const completionPercentage =
-    filteredItems.length > 0
-      ? Math.round(
-          (Array.from(completedItems).filter((id) =>
-            filteredItems.find((item) => item.id === id)
-          ).length /
-            filteredItems.length) *
-            100
-        )
+    selectedItems.length > 0
+      ? Math.round((completionCount / selectedItems.length) * 100)
       : 0;
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -97,8 +134,7 @@ export default function SafetyChecklist() {
           </p>
         </motion.div>
 
-        {/* Progress */}
-        {!loading && filteredItems.length > 0 && (
+        {!loading && selectedItems.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -106,9 +142,7 @@ export default function SafetyChecklist() {
             className="mb-8 card-gradient p-6 rounded-xl"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-foreground">
-                Your Progress
-              </h3>
+              <h3 className="text-lg font-bold text-foreground">Your Progress</h3>
               <span className="text-2xl font-bold text-cyan-400">
                 {completionPercentage}%
               </span>
@@ -120,46 +154,11 @@ export default function SafetyChecklist() {
               ></div>
             </div>
             <p className="text-sm text-foreground/70 mt-3">
-              {completedItems.size} of {items.length} tasks completed
+              {completionCount} of {selectedItems.length} tasks completed
             </p>
           </motion.div>
         )}
 
-        {/* Category Filter */}
-        {!loading && uniqueCategories.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="mb-8 flex flex-wrap gap-2"
-          >
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                selectedCategory === null
-                  ? "bg-cyan-500 text-background"
-                  : "border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
-              }`}
-            >
-              All Categories
-            </button>
-            {uniqueCategories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                  selectedCategory === category
-                    ? "bg-cyan-500 text-background"
-                    : "border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
-                }`}
-              >
-                {category}
-              </button>
-            ))}
-          </motion.div>
-        )}
-
-        {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin">
@@ -168,10 +167,9 @@ export default function SafetyChecklist() {
           </div>
         )}
 
-        {/* Checklist Items */}
-        {!loading && filteredItems.length > 0 && (
-          <div className="space-y-4">
-            {filteredItems.map((item, idx) => (
+        {!loading && selectedItems.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-stretch">
+            {selectedItems.map((item, idx) => (
               <motion.div
                 key={item.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -179,11 +177,11 @@ export default function SafetyChecklist() {
                 transition={{ duration: 0.6, delay: idx * 0.05 }}
                 className={`${getPriorityBgColor(
                   item.priority
-                )} border rounded-xl p-6 transition-all duration-300 ${
+                )} border rounded-xl p-5 transition-all duration-300 h-full ${
                   completedItems.has(item.id) ? "opacity-60" : ""
                 }`}
               >
-                <div className="flex items-start gap-4">
+                <div className="flex items-start gap-4 h-full">
                   <button
                     onClick={() => toggleCompletion(item.id)}
                     className="flex-shrink-0 mt-1"
@@ -196,14 +194,14 @@ export default function SafetyChecklist() {
                       }`}
                     >
                       {completedItems.has(item.id) && (
-                        <span className="text-white text-sm">✓</span>
+                        <Check size={14} className="text-white" />
                       )}
                     </div>
                   </button>
 
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex items-start justify-between mb-3 gap-3">
+                      <div className="min-w-0">
                         <h3
                           className={`text-lg font-bold transition-all duration-300 ${
                             completedItems.has(item.id)
@@ -213,18 +211,18 @@ export default function SafetyChecklist() {
                         >
                           {item.title}
                         </h3>
-                        <p className="text-sm text-foreground/70 mt-1">
+                        <p className="text-sm text-foreground/70 mt-1 line-clamp-2">
                           {item.description}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                      <div className="flex flex-col items-end gap-2 ml-2 flex-shrink-0">
                         <span
                           className={`text-xs font-semibold uppercase ${getPriorityColor(
                             item.priority
                           )}`}
                         >
-                          {item.priority}
+                          {getPriorityLabel(item.priority)}
                         </span>
                         <div className="flex items-center gap-1 text-foreground/60 text-sm">
                           <Clock size={14} />
@@ -233,17 +231,19 @@ export default function SafetyChecklist() {
                       </div>
                     </div>
 
-                    {/* Steps */}
-                    <div className="mt-4 ml-0 space-y-2">
-                      {item.steps.map((step, stepIdx) => (
+                    <div className="mt-2 space-y-2 rounded-lg border border-cyan-500/20 bg-black/20 p-3 flex-1">
+                      <p className="text-sm font-semibold text-cyan-300 mb-1">
+                        Checklist Steps
+                      </p>
+                      {item.steps.slice(0, 3).map((step, stepIdx) => (
                         <div
                           key={stepIdx}
-                          className="flex items-start gap-3 text-sm text-foreground/80 bg-black/20 p-3 rounded-lg"
+                          className="flex items-start gap-3 text-sm text-foreground/80 bg-black/30 p-3 rounded-lg border border-cyan-500/10"
                         >
                           <span className="font-semibold text-cyan-400 flex-shrink-0">
                             {stepIdx + 1}.
                           </span>
-                          <span>{step}</span>
+                          <span className="line-clamp-2">{step}</span>
                         </div>
                       ))}
                     </div>
@@ -254,11 +254,11 @@ export default function SafetyChecklist() {
           </div>
         )}
 
-        {!loading && filteredItems.length === 0 && (
+        {!loading && selectedItems.length === 0 && (
           <div className="text-center py-12 card-gradient rounded-xl p-8">
             <CheckCircle2 className="w-16 h-16 text-cyan-400 mx-auto mb-4 opacity-50" />
             <p className="text-foreground/60 text-lg">
-              No checklist items found for the selected category
+              No checklist items available right now
             </p>
           </div>
         )}

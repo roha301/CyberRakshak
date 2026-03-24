@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Trophy, Flame, RotateCw, ShieldAlert } from "lucide-react";
+import { Brain, Trophy, Flame, RotateCw, ShieldAlert, Timer } from "lucide-react";
 import { QuizQuestion } from "@shared/api";
 
 type QuizMode = "rapid" | "scenario" | "trick";
@@ -13,7 +13,24 @@ interface AnswerState {
   isCorrect: boolean;
 }
 
+const getScoreComment = (percentage: number) => {
+  if (percentage >= 90) return "Elite awareness. You can spot cyber traps like a pro.";
+  if (percentage >= 75) return "Strong performance. Your cyber instincts are solid.";
+  if (percentage >= 60) return "Good start. A bit more practice will sharpen your response.";
+  if (percentage >= 40) return "You are improving, but risky patterns still slip through.";
+  return "Needs attention. Focus on phishing and verification basics first.";
+};
+
+const getRank = (percentage: number) => {
+  if (percentage >= 90) return "Cyber Sentinel";
+  if (percentage >= 75) return "Threat Hunter";
+  if (percentage >= 60) return "Security Scout";
+  if (percentage >= 40) return "Rookie Defender";
+  return "New Recruit";
+};
+
 export default function Quiz() {
+  const RAPID_FIRE_SECONDS = 5;
   const [stage, setStage] = useState<Stage>("setup");
   const [allCategories, setAllCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -24,16 +41,50 @@ export default function Quiz() {
   const [answers, setAnswers] = useState<AnswerState[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
+  const [timeLeft, setTimeLeft] = useState(RAPID_FIRE_SECONDS);
   const currentQuestion = questions[currentIndex];
   const currentAnswer = answers.find((a) => a.questionId === currentQuestion?.id);
   const total = questions.length;
   const score = answers.filter((a) => a.isCorrect).length;
   const progress = total ? Math.round(((currentIndex + 1) / total) * 100) : 0;
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  useEffect(() => {
+    if (stage !== "active" || mode !== "rapid" || !currentQuestion || currentAnswer) return;
+    setTimeLeft(RAPID_FIRE_SECONDS);
+  }, [stage, mode, currentIndex, currentQuestion?.id, currentAnswer, RAPID_FIRE_SECONDS]);
+
+  useEffect(() => {
+    if (stage !== "active" || mode !== "rapid" || !currentQuestion || currentAnswer) return;
+
+    if (timeLeft <= 0) {
+      const timeoutAnswer: AnswerState = {
+        questionId: currentQuestion.id,
+        selected: -1,
+        isCorrect: false,
+      };
+      setAnswers((prev) => [...prev, timeoutAnswer]);
+      setTimeout(() => {
+        setCurrentIndex((prev) => {
+          if (prev + 1 >= questions.length) {
+            setStage("results");
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 450);
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [stage, mode, currentQuestion, currentAnswer, timeLeft, questions.length]);
 
   const longestStreak = useMemo(() => {
     let best = 0;
@@ -48,6 +99,39 @@ export default function Quiz() {
     }
     return best;
   }, [answers]);
+
+  const currentStreak = useMemo(() => {
+    let run = 0;
+    for (let i = answers.length - 1; i >= 0; i--) {
+      if (!answers[i].isCorrect) break;
+      run++;
+    }
+    return run;
+  }, [answers]);
+
+  const xp = useMemo(() => {
+    let runningStreak = 0;
+    let totalXp = 0;
+    for (const answer of answers) {
+      if (answer.isCorrect) {
+        runningStreak += 1;
+        totalXp += 100 + Math.min(runningStreak * 20, 100);
+      } else {
+        runningStreak = 0;
+      }
+    }
+    return totalXp;
+  }, [answers]);
+
+  const accuracy = Math.round((score / Math.max(total, 1)) * 100);
+  const rank = getRank(accuracy);
+  const scoreComment = getScoreComment(accuracy);
+  const earnedBadges = [
+    { id: "streak", label: "Hot Streak", unlocked: longestStreak >= 3 },
+    { id: "accuracy", label: "Sharp Eye", unlocked: accuracy >= 75 },
+    { id: "perfect", label: "Flawless Run", unlocked: score === total && total > 0 },
+    { id: "fast", label: "Rapid Responder", unlocked: mode === "rapid" && score >= Math.ceil(total * 0.6) },
+  ].filter((badge) => badge.unlocked);
 
   const questionLimit = mode === "rapid" ? 6 : mode === "scenario" ? 8 : 10;
 
@@ -120,6 +204,7 @@ export default function Quiz() {
     setAnswers([]);
     setCurrentIndex(0);
     setError(null);
+    setTimeLeft(RAPID_FIRE_SECONDS);
   }
 
   return (
@@ -232,11 +317,38 @@ export default function Quiz() {
             <div className="card-gradient p-5 rounded-xl">
               <div className="flex items-center justify-between text-sm text-foreground/70 mb-2">
                 <span>Question {currentIndex + 1} / {total}</span>
-                <span>{progress}% complete</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-yellow-300 font-semibold">XP {xp}</span>
+                  <span className="inline-flex items-center gap-1 text-orange-300 font-semibold">
+                    <Flame size={15} />
+                    Streak {currentStreak}
+                  </span>
+                  {mode === "rapid" && (
+                    <span
+                      className={`inline-flex items-center gap-1 font-semibold ${
+                        timeLeft <= 2 ? "text-red-300" : "text-cyan-300"
+                      }`}
+                    >
+                      <Timer size={15} />
+                      {timeLeft}s
+                    </span>
+                  )}
+                  <span>{progress}% complete</span>
+                </div>
               </div>
               <div className="w-full h-2 rounded-full bg-cyan-500/10 overflow-hidden">
                 <div className="h-full bg-cyan-400 transition-all duration-300" style={{ width: `${progress}%` }} />
               </div>
+              {mode === "rapid" && (
+                <div className="w-full h-1.5 rounded-full bg-red-500/10 overflow-hidden mt-3">
+                  <div
+                    className={`h-full transition-all duration-1000 ${
+                      timeLeft <= 2 ? "bg-red-400" : "bg-orange-400"
+                    }`}
+                    style={{ width: `${(timeLeft / RAPID_FIRE_SECONDS) * 100}%` }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="card-gradient p-6 rounded-xl">
@@ -305,11 +417,21 @@ export default function Quiz() {
               <Trophy className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
               <h2 className="text-3xl font-bold mb-2">Quiz Complete</h2>
               <p className="text-foreground/70">
-                You scored {score} out of {total} ({Math.round((score / Math.max(total, 1)) * 100)}%)
+                You scored {score} out of {total} ({accuracy}%)
               </p>
+              <div className="mt-3 inline-flex items-center rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-1 text-cyan-300 text-sm font-semibold">
+                Rank: {rank}
+              </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
+            <div className="grid md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-black/20 border border-cyan-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-yellow-300 mb-1">
+                  <Trophy size={18} />
+                  <span className="font-semibold">XP Earned</span>
+                </div>
+                <p className="text-2xl font-bold">{xp}</p>
+              </div>
               <div className="bg-black/20 border border-cyan-500/20 rounded-lg p-4">
                 <div className="flex items-center gap-2 text-cyan-300 mb-1">
                   <Flame size={18} />
@@ -327,6 +449,29 @@ export default function Quiz() {
                     .join(", ") || "None. Great job."}
                 </p>
               </div>
+            </div>
+
+            <div className="mb-6 rounded-lg border border-cyan-500/20 bg-black/20 p-4">
+              <p className="text-sm text-cyan-300 font-semibold mb-1">Score Comment</p>
+              <p className="text-foreground/80">{scoreComment}</p>
+            </div>
+
+            <div className="mb-6 rounded-lg border border-cyan-500/20 bg-black/20 p-4">
+              <p className="text-sm text-cyan-300 font-semibold mb-2">Badges Unlocked</p>
+              {earnedBadges.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {earnedBadges.map((badge) => (
+                    <span
+                      key={badge.id}
+                      className="px-3 py-1 rounded-full text-xs font-semibold border border-green-500/30 bg-green-500/10 text-green-300"
+                    >
+                      {badge.label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-foreground/70">No badges yet. Try another round.</p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3">

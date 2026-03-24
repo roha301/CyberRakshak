@@ -1,8 +1,20 @@
 import { RequestHandler } from "express";
 import { QuizResponse, QuizResultResponse } from "@shared/api";
 
+export interface QuizAttemptRecord {
+  id: string;
+  userId: string;
+  submittedAt: string;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  questionIds: string[];
+}
+
+export const quizAttemptsStore: QuizAttemptRecord[] = [];
+
 // Mock database
-const quizQuestions = [
+export const quizQuestionsStore = [
   {
     id: "q1",
     question:
@@ -192,7 +204,7 @@ export const handleGetQuizQuestions: RequestHandler = (req, res) => {
   try {
     const { category, difficulty, limit } = req.query;
 
-    let filtered = [...quizQuestions];
+    let filtered = [...quizQuestionsStore];
 
     if (category && typeof category === "string") {
       filtered = filtered.filter((q) => q.category === category);
@@ -222,7 +234,7 @@ export const handleGetQuizQuestions: RequestHandler = (req, res) => {
 export const handleGetQuestionById: RequestHandler = (req, res) => {
   try {
     const { id } = req.params;
-    const question = quizQuestions.find((q) => q.id === id);
+    const question = quizQuestionsStore.find((q) => q.id === id);
 
     if (!question) {
       return res.status(404).json({ error: "Question not found" });
@@ -236,7 +248,7 @@ export const handleGetQuestionById: RequestHandler = (req, res) => {
 
 export const handleSubmitQuiz: RequestHandler = (req, res) => {
   try {
-    const { answers } = req.body;
+    const { answers, userId } = req.body;
 
     if (!Array.isArray(answers)) {
       return res.status(400).json({ error: "Invalid answers format" });
@@ -245,10 +257,11 @@ export const handleSubmitQuiz: RequestHandler = (req, res) => {
     let correctCount = 0;
     const results = answers.map(
       (answer: { questionId: string; selectedAnswer: number }) => {
-        const question = quizQuestions.find((q) => q.id === answer.questionId);
+        const question = quizQuestionsStore.find((q) => q.id === answer.questionId);
         if (!question) {
           return {
             questionId: answer.questionId,
+            userAnswer: answer.selectedAnswer,
             isCorrect: false,
           };
         }
@@ -258,6 +271,7 @@ export const handleSubmitQuiz: RequestHandler = (req, res) => {
 
         return {
           questionId: answer.questionId,
+          userAnswer: answer.selectedAnswer,
           isCorrect,
         };
       }
@@ -272,6 +286,16 @@ export const handleSubmitQuiz: RequestHandler = (req, res) => {
       results,
     };
 
+    quizAttemptsStore.push({
+      id: `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userId: (typeof userId === "string" && userId.trim()) || req.ip || "anonymous-user",
+      submittedAt: new Date().toISOString(),
+      score: correctCount,
+      totalQuestions: answers.length,
+      percentage,
+      questionIds: answers.map((a: { questionId: string }) => a.questionId),
+    });
+
     res.json(response);
   } catch (error) {
     res.status(500).json({ error: "Failed to submit quiz" });
@@ -280,8 +304,8 @@ export const handleSubmitQuiz: RequestHandler = (req, res) => {
 
 export const handleGetCategories: RequestHandler = (req, res) => {
   try {
-    const categories = [...new Set(quizQuestions.map((q) => q.category))];
-    res.json({ categories });
+    const categoriesFromStore = [...new Set(quizQuestionsStore.map((q) => q.category))];
+    res.json({ categories: categoriesFromStore });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch categories" });
   }

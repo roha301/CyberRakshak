@@ -32,6 +32,7 @@ const scamTypes = [
 ];
 
 const defaultForm: ScamReportInput = {
+  reporterName: "",
   type: "",
   description: "",
   incidentDate: "",
@@ -40,6 +41,7 @@ const defaultForm: ScamReportInput = {
   email: "",
   phoneNumber: "",
   reportedTo: "",
+  screenshotBase64: "",
 };
 
 export default function ReportScam() {
@@ -98,6 +100,26 @@ export default function ReportScam() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setSubmitError("Image must be less than 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateField("screenshotBase64", reader.result as string);
+      setSubmitError(null);
+    };
+    reader.onerror = () => {
+      setSubmitError("Failed to read image file");
+    };
+    reader.readAsDataURL(file);
+  }
+
   function validate(): string | null {
     if (!form.type) return "Please select scam type.";
     if (!form.description.trim()) return "Please describe what happened.";
@@ -124,6 +146,10 @@ export default function ReportScam() {
           form.amount === undefined || Number.isNaN(form.amount)
             ? undefined
             : Number(form.amount),
+        reporterAge:
+          form.reporterAge === undefined || Number.isNaN(form.reporterAge)
+            ? undefined
+            : Number(form.reporterAge),
         url: form.url?.trim() || undefined,
         email: form.email?.trim() || undefined,
         phoneNumber: form.phoneNumber?.trim() || undefined,
@@ -200,6 +226,36 @@ export default function ReportScam() {
             className="lg:col-span-2 card-gradient p-6 rounded-xl space-y-4"
           >
             <h2 className="text-xl font-bold">Incident Details</h2>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold block mb-2">Your Name (optional)</label>
+                <input
+                  type="text"
+                  value={form.reporterName || ""}
+                  onChange={(e) => updateField("reporterName", e.target.value)}
+                  className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3"
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold block mb-2">Your Age (optional)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.reporterAge ?? ""}
+                  onChange={(e) =>
+                    updateField(
+                      "reporterAge",
+                      e.target.value === "" ? undefined : Number(e.target.value)
+                    )
+                  }
+                  className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3"
+                  placeholder="e.g. 35"
+                />
+              </div>
+            </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
@@ -301,6 +357,21 @@ export default function ReportScam() {
                 placeholder="Bank, local police, FTC, platform support"
                 className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3"
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold block mb-2">Screenshot of Scam (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30"
+              />
+              {form.screenshotBase64 && (
+                <div className="mt-2 text-xs text-green-300 flex items-center gap-1">
+                  <CheckCircle2 size={12} /> Screenshot Attached
+                </div>
+              )}
             </div>
 
             {submitError && (

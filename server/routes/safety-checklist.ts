@@ -60,7 +60,7 @@ const checklistItems = [
       "Disable third-party cookies",
       "Install security extensions like HTTPS Everywhere",
     ],
-    priority: "medium" as const,
+    priority: "low" as const,
     estimatedTime: "15 minutes",
   },
   {
@@ -152,6 +152,21 @@ const checklistItems = [
     ],
     priority: "medium" as const,
     estimatedTime: "45 minutes",
+  },
+  {
+    id: "mobile-security",
+    category: "Mobile Security",
+    title: "Harden Your Mobile Phone",
+    description: "Secure your smartphone against app-based and SIM-related scams",
+    steps: [
+      "Enable screen lock with PIN/biometric authentication",
+      "Keep OS and apps updated automatically",
+      "Disable app installs from unknown sources",
+      "Review and remove risky app permissions monthly",
+      "Set a SIM PIN and lock if available",
+    ],
+    priority: "low" as const,
+    estimatedTime: "20 minutes",
   },
 ];
 

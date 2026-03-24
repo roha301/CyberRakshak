@@ -1,6 +1,7 @@
-import { motion } from "framer-motion";
+﻿import { motion } from "framer-motion";
 import { useState } from "react";
 import { Lock, Mail, Link2, BarChart3, Check, X } from "lucide-react";
+import { analyzeUrlRisk, type UrlRiskResult } from "@/lib/urlRisk";
 
 export default function SecurityTools() {
   const [activeTab, setActiveTab] = useState(0);
@@ -59,50 +60,11 @@ export default function SecurityTools() {
 
   // URL Detector
   const [url, setUrl] = useState("");
-  const [urlAnalysis, setUrlAnalysis] = useState<{
-    isSuspicious: boolean;
-    reasons: string[];
-  } | null>(null);
+  const [urlAnalysis, setUrlAnalysis] = useState<UrlRiskResult | null>(null);
 
   const analyzeURL = (urlInput: string) => {
     setUrl(urlInput);
-    const reasons: string[] = [];
-
-    // Simple regex-based detection
-    if (!urlInput.startsWith("https://")) {
-      reasons.push("Not using secure HTTPS protocol");
-    }
-
-    if (
-      urlInput.includes("@") &&
-      !urlInput.startsWith("https://") &&
-      !urlInput.startsWith("http://")
-    ) {
-      reasons.push("Suspicious @ symbol in URL");
-    }
-
-    if (urlInput.length > 100) {
-      reasons.push("Unusually long URL");
-    }
-
-    if (/(-|_){2,}/.test(urlInput.split("//")[1] || "")) {
-      reasons.push("Multiple hyphens or underscores in domain");
-    }
-
-    const suspiciousDomains = [
-      "paypa1.com",
-      "amaz0n.com",
-      "goog1e.com",
-      "micr0soft.com",
-    ];
-    if (suspiciousDomains.some((domain) => urlInput.includes(domain))) {
-      reasons.push("Domain resembles legitimate site");
-    }
-
-    setUrlAnalysis({
-      isSuspicious: reasons.length > 0,
-      reasons,
-    });
+    setUrlAnalysis(analyzeUrlRisk(urlInput));
   };
 
   // Email Analyzer
@@ -362,25 +324,32 @@ export default function SecurityTools() {
 
               {urlAnalysis && (
                 <div className="space-y-4">
-                  <div
-                    className={`p-4 rounded-lg border ${
-                      urlAnalysis.isSuspicious
-                        ? "bg-red-500/10 border-red-500/30"
-                        : "bg-green-500/10 border-green-500/30"
-                    }`}
-                  >
-                    <p
-                      className={`font-semibold ${
-                        urlAnalysis.isSuspicious
-                          ? "text-red-400"
-                          : "text-green-400"
+                  {urlAnalysis.status === "empty" ? (
+                    <p className="text-foreground/70">Enter a URL to analyze.</p>
+                  ) : (
+                    <div
+                      className={`p-4 rounded-lg border ${
+                        urlAnalysis.status === "suspicious" ||
+                        urlAnalysis.status === "invalid"
+                          ? "bg-red-500/10 border-red-500/30"
+                          : "bg-green-500/10 border-green-500/30"
                       }`}
                     >
-                      {urlAnalysis.isSuspicious
-                        ? "⚠️ Suspicious URL Detected"
-                        : "✅ URL Appears Safe"}
-                    </p>
-                  </div>
+                      <p
+                        className={`font-semibold ${
+                          urlAnalysis.status === "suspicious" ||
+                          urlAnalysis.status === "invalid"
+                            ? "text-red-400"
+                            : "text-green-400"
+                        }`}
+                      >
+                        {urlAnalysis.status === "suspicious" ||
+                        urlAnalysis.status === "invalid"
+                          ? "Suspicious URL Detected"
+                          : "URL Appears Safe"}
+                      </p>
+                    </div>
+                  )}
 
                   {urlAnalysis.reasons.length > 0 && (
                     <div className="space-y-2">
@@ -470,7 +439,7 @@ export default function SecurityTools() {
 
                   {emailAnalysis.indicators.length === 0 && (
                     <p className="text-green-400">
-                      ✅ No suspicious indicators detected
+                      âœ… No suspicious indicators detected
                     </p>
                   )}
                 </div>
@@ -548,3 +517,4 @@ export default function SecurityTools() {
     </div>
   );
 }
+

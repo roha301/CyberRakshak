@@ -1,8 +1,20 @@
 import { RequestHandler } from "express";
 import { LiveAlertsResponse } from "@shared/api";
 
+export interface LiveAlertRecord {
+  id: string;
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  type: string;
+  targetAudience: string;
+  reportedCases: number;
+  timestamp: string;
+  preventionTips: string[];
+}
+
 // Mock database
-const alerts = [
+export const liveAlertsStore: LiveAlertRecord[] = [
   {
     id: "alert-001",
     title: "Fake ICICI Bank App Warning",
@@ -128,14 +140,14 @@ export const handleGetLiveAlerts: RequestHandler = (req, res) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const paginatedAlerts = alerts.slice(
+    const paginatedAlerts = liveAlertsStore.slice(
       offset,
-      Math.min(offset + limit, alerts.length)
+      Math.min(offset + limit, liveAlertsStore.length)
     );
 
     const response: LiveAlertsResponse = {
       data: paginatedAlerts,
-      total: alerts.length,
+      total: liveAlertsStore.length,
     };
 
     res.json(response);
@@ -147,7 +159,7 @@ export const handleGetLiveAlerts: RequestHandler = (req, res) => {
 export const handleGetAlertById: RequestHandler = (req, res) => {
   try {
     const { id } = req.params;
-    const alert = alerts.find((a) => a.id === id);
+    const alert = liveAlertsStore.find((a) => a.id === id);
 
     if (!alert) {
       return res.status(404).json({ error: "Alert not found" });
@@ -162,7 +174,7 @@ export const handleGetAlertById: RequestHandler = (req, res) => {
 export const handleGetAlertsByType: RequestHandler = (req, res) => {
   try {
     const { type } = req.params;
-    const filteredAlerts = alerts.filter((a) => a.type === type);
+    const filteredAlerts = liveAlertsStore.filter((a) => a.type === type);
 
     res.json({
       data: filteredAlerts,

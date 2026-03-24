@@ -1,8 +1,20 @@
 import { RequestHandler } from "express";
 import { ScamReportInput, ScamReportResponse } from "@shared/api";
 
+export type ModerationStatus = "pending" | "approved" | "rejected" | "investigating";
+export type AuthenticityStatus = "unverified" | "verified" | "suspected-fake";
+
+export interface ScamReportRecord extends ScamReportInput {
+  id: string;
+  timestamp: string;
+  userId: string;
+  moderationStatus: ModerationStatus;
+  authenticity: AuthenticityStatus;
+  moderatorNote?: string;
+}
+
 // Mock database to store reports
-const reports: (ScamReportInput & { id: string; timestamp: string })[] = [];
+export const scamReportsStore: ScamReportRecord[] = [];
 
 // Generate unique report ID
 function generateReportId(): string {
@@ -19,6 +31,8 @@ let reportStats = {
 export const handleSubmitScamReport: RequestHandler = (req, res) => {
   try {
     const {
+      reporterName,
+      reporterAge,
       type,
       description,
       amount,
@@ -27,6 +41,7 @@ export const handleSubmitScamReport: RequestHandler = (req, res) => {
       phoneNumber,
       incidentDate,
       reportedTo,
+      screenshotBase64,
     } = req.body as ScamReportInput;
 
     // Validation
@@ -42,8 +57,16 @@ export const handleSubmitScamReport: RequestHandler = (req, res) => {
     const reportId = generateReportId();
     const timestamp = new Date().toISOString();
 
-    const report = {
+    const userId =
+      (typeof email === "string" && email.trim()) ||
+      (typeof phoneNumber === "string" && phoneNumber.trim()) ||
+      req.ip ||
+      "anonymous-user";
+
+    const report: ScamReportRecord = {
       id: reportId,
+      reporterName,
+      reporterAge,
       type,
       description,
       amount,
@@ -52,10 +75,14 @@ export const handleSubmitScamReport: RequestHandler = (req, res) => {
       phoneNumber,
       incidentDate,
       reportedTo,
+      screenshotBase64,
       timestamp,
+      userId,
+      moderationStatus: "pending",
+      authenticity: "unverified",
     };
 
-    reports.push(report);
+    scamReportsStore.push(report);
 
     // Update stats
     reportStats.total++;
@@ -83,7 +110,7 @@ export const handleGetReportStatus: RequestHandler = (req, res) => {
   try {
     const { reportId } = req.params;
 
-    const report = reports.find((r) => r.id === reportId);
+    const report = scamReportsStore.find((r) => r.id === reportId);
 
     if (!report) {
       return res.status(404).json({ error: "Report not found" });
@@ -91,10 +118,11 @@ export const handleGetReportStatus: RequestHandler = (req, res) => {
 
     res.json({
       reportId: report.id,
-      status: "Under Review",
+      status: report.moderationStatus,
       submittedDate: report.timestamp,
       description: report.description,
       type: report.type,
+      authenticity: report.authenticity,
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch report status" });

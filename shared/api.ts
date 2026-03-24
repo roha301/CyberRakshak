@@ -45,6 +45,11 @@ export interface LiveAlertsResponse {
   total: number;
 }
 
+/* ============ DEMO ============ */
+export interface DemoResponse {
+  message: string;
+}
+
 /* ============ QUIZ ============ */
 export interface QuizQuestion {
   id: string;
@@ -75,6 +80,8 @@ export interface QuizResultResponse {
 
 /* ============ SCAM REPORT ============ */
 export interface ScamReportInput {
+  reporterName?: string;
+  reporterAge?: number;
   type: string;
   description: string;
   amount?: number;
@@ -83,12 +90,24 @@ export interface ScamReportInput {
   phoneNumber?: string;
   incidentDate: string;
   reportedTo?: string;
+  screenshotBase64?: string;
 }
 
 export interface ScamReportResponse {
   success: boolean;
   reportId: string;
   message: string;
+}
+
+/* ============ AI ASSISTANT ============ */
+export interface AiAssistantRequest {
+  prompt: string;
+  language?: "en" | "hi";
+  history?: { role: "user" | "assistant"; content: string }[];
+}
+
+export interface AiAssistantResponse {
+  reply: string;
 }
 
 /* ============ SAFETY CHECKLIST ============ */

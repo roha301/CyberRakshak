@@ -28,26 +28,26 @@ export default function LiveAlerts() {
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "critical":
-        return "bg-red-500/20 border-red-500/30 text-red-400";
+        return "bg-red-500/20 border-red-500/30";
       case "high":
-        return "bg-orange-500/20 border-orange-500/30 text-orange-400";
+        return "bg-orange-500/20 border-orange-500/30";
       case "medium":
-        return "bg-yellow-500/20 border-yellow-500/30 text-yellow-400";
+        return "bg-yellow-500/20 border-yellow-500/30";
       default:
-        return "bg-blue-500/20 border-blue-500/30 text-blue-400";
+        return "bg-blue-500/20 border-blue-500/30";
     }
   };
 
-  const getSeverityIcon = (severity: string) => {
+  const getSeverityBadge = (severity: string) => {
     switch (severity) {
       case "critical":
-        return "🚨";
+        return "text-red-300 border-red-500/40 bg-red-500/15";
       case "high":
-        return "⚠️";
+        return "text-orange-300 border-orange-500/40 bg-orange-500/15";
       case "medium":
-        return "⚡";
+        return "text-yellow-300 border-yellow-500/40 bg-yellow-500/15";
       default:
-        return "ℹ️";
+        return "text-blue-300 border-blue-500/40 bg-blue-500/15";
     }
   };
 
@@ -70,7 +70,6 @@ export default function LiveAlerts() {
   return (
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -86,11 +85,10 @@ export default function LiveAlerts() {
             <span className="text-glow">Live Scam Alerts</span>
           </h1>
           <p className="text-xl text-foreground/70">
-            Real-time alerts about emerging scams and security threats
+            Emerging scams presented in focused alert cards.
           </p>
         </motion.div>
 
-        {/* Alert Count */}
         {!loading && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -105,7 +103,6 @@ export default function LiveAlerts() {
           </motion.div>
         )}
 
-        {/* Type Filter */}
         {!loading && uniqueTypes.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -139,7 +136,6 @@ export default function LiveAlerts() {
           </motion.div>
         )}
 
-        {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin">
@@ -148,63 +144,55 @@ export default function LiveAlerts() {
           </div>
         )}
 
-        {/* Alerts List */}
         {!loading && filteredAlerts.length > 0 && (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6">
             {filteredAlerts.map((alert, idx) => (
               <motion.div
                 key={alert.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: idx * 0.05 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: idx * 0.05 }}
                 className={`${getSeverityColor(
                   alert.severity
-                )} border rounded-xl p-6 backdrop-blur-sm`}
+                )} border rounded-xl p-5 backdrop-blur-sm`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start gap-4">
-                    <span className="text-3xl">
-                      {getSeverityIcon(alert.severity)}
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-full border text-xs font-semibold uppercase ${getSeverityBadge(
+                        alert.severity
+                      )}`}
+                    >
+                      {alert.severity}
                     </span>
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold text-foreground mb-2">
-                        {alert.title}
-                      </h3>
-                      <div className="flex flex-wrap gap-3 text-sm mb-3">
-                        <span className="px-3 py-1 bg-black/20 rounded-full">
-                          {alert.type}
-                        </span>
-                        <span className="px-3 py-1 bg-black/20 rounded-full">
-                          {alert.targetAudience}
-                        </span>
-                        <span className="px-3 py-1 bg-black/20 rounded-full font-semibold">
-                          {alert.reportedCases.toLocaleString()} reports
-                        </span>
-                      </div>
-                      <p className="text-foreground/90 mb-4">
-                        {alert.description}
-                      </p>
-                    </div>
+                    <span className="px-3 py-1 bg-black/20 rounded-full text-sm text-foreground/90">
+                      {alert.type}
+                    </span>
+                    <span className="px-3 py-1 bg-black/20 rounded-full text-sm text-foreground/90">
+                      {alert.targetAudience}
+                    </span>
                   </div>
-                  <div className="text-sm text-foreground/70 flex items-center gap-2 whitespace-nowrap">
-                    <Clock size={16} />
-                    {formatTime(alert.timestamp)}
+
+                  <h3 className="text-2xl font-bold text-foreground">{alert.title}</h3>
+                  <p className="text-foreground/90 leading-relaxed">{alert.description}</p>
+
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <span className="px-3 py-1 bg-black/20 rounded-lg font-semibold text-foreground/90">
+                      {alert.reportedCases.toLocaleString()} reports
+                    </span>
+                    <span className="px-3 py-1 bg-black/20 rounded-lg text-foreground/80 flex items-center gap-2">
+                      <Clock size={15} />
+                      {formatTime(alert.timestamp)}
+                    </span>
                   </div>
                 </div>
 
-                {/* Prevention Tips */}
-                <div className="bg-black/20 rounded-lg p-4">
-                  <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <span>✓</span> What To Do
-                  </h4>
-                  <ul className="space-y-2">
+                <div className="mt-5 rounded-lg bg-black/20 border border-cyan-500/20 p-4">
+                  <h4 className="font-semibold text-foreground mb-3">Recommended Actions</h4>
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {alert.preventionTips.map((tip, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-2 text-foreground/90"
-                      >
-                        <span className="text-green-400 mt-1">•</span>
-                        <span>{tip}</span>
+                      <li key={i} className="text-sm text-foreground/90 leading-relaxed">
+                        - {tip}
                       </li>
                     ))}
                   </ul>
@@ -217,9 +205,7 @@ export default function LiveAlerts() {
         {!loading && filteredAlerts.length === 0 && (
           <div className="text-center py-12 card-gradient rounded-xl p-8">
             <Shield className="w-16 h-16 text-cyan-400 mx-auto mb-4 opacity-50" />
-            <p className="text-foreground/60 text-lg">
-              No alerts found for the selected type
-            </p>
+            <p className="text-foreground/60 text-lg">No alerts found for the selected type</p>
           </div>
         )}
       </div>

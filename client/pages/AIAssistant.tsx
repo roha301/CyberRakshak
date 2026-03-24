@@ -1,92 +1,207 @@
-﻿import { motion } from "framer-motion";
-import { Mic, Send, Volume2, RotateCcw, Bot, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import {
+  Mic,
+  Send,
+  Volume2,
+  RotateCcw,
+  Bot,
+  Sparkles,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-const quickPrompts = [
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+type SpeechRecognitionCtor = new () => {
+  language: string;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onresult: ((event: any) => void) | null;
+  start: () => void;
+};
+
+const quickPromptsEn = [
   "How do I spot a phishing email?",
   "How can I secure my WhatsApp account?",
   "What should I do after clicking a suspicious link?",
   "Tips to create a strong password",
 ];
 
-const responses = [
-  "Always use strong, unique passwords for each account. A good password should be at least 12 characters long with a mix of uppercase letters, lowercase letters, numbers, and symbols.",
-  "Be cautious with emails asking for sensitive information. Legitimate companies never ask for passwords or financial details via email.",
-  "Enable two-factor authentication on all your important accounts to add an extra layer of security.",
-  "Keep your software and operating system updated to protect against known security vulnerabilities.",
-  "Never share personal information with unknown sources online. Verify the authenticity of websites before entering sensitive data.",
-  "If you suspect account compromise, change your password immediately, sign out from all devices, and review account recovery settings.",
+const quickPromptsHi = [
+  "मैं फ़िशिंग ईमेल कैसे पहचानूँ?",
+  "मैं अपना WhatsApp अकाउंट कैसे सुरक्षित रखूँ?",
+  "यदि मैंने संदिग्ध लिंक पर क्लिक कर दिया है तो क्या करूँ?",
+  "मज़बूत पासवर्ड बनाने के सुझाव",
 ];
 
+const cyberKeywords = [
+  "cyber",
+  "phish",
+  "malware",
+  "ransomware",
+  "scam",
+  "fraud",
+  "hacked",
+  "hack",
+  "breach",
+  "password",
+  "otp",
+  "2fa",
+  "mfa",
+  "firewall",
+  "virus",
+  "trojan",
+  "spyware",
+  "identity theft",
+  "data leak",
+  "cybercrime",
+  "url",
+  "link",
+  "email security",
+  "social engineering",
+  "network attack",
+  "ddos",
+  "xss",
+  "sql injection",
+  "cyber security",
+  "साइबर",
+  "फिशिंग",
+  "रैनसमवेयर",
+  "स्कैम",
+  "फ्रॉड",
+  "हैक",
+  "पासवर्ड",
+  "ओटीपी",
+  "धोखाधड़ी",
+  "डेटा लीक",
+  "लिंक",
+  "सुरक्षा",
+];
+
+function isCybercrimePrompt(text: string) {
+  const normalized = text.toLowerCase();
+  return cyberKeywords.some((keyword) => normalized.includes(keyword));
+}
+
 export default function AIAssistant() {
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [language, setLanguage] = useState<"en" | "hi">("en");
+  const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
   const lastAssistantMessageRef = useRef("");
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    const SpeechRecognitionCtor =
-      window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechApi = window as Window & {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const SpeechRecognitionClass =
+      speechApi.SpeechRecognition || speechApi.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) return;
 
-    if (!SpeechRecognitionCtor) return;
-
-    recognitionRef.current = new SpeechRecognitionCtor();
-    recognitionRef.current.language = "en-US";
-
+    recognitionRef.current = new SpeechRecognitionClass();
+    recognitionRef.current.language = language === "en" ? "en-US" : "hi-IN";
     recognitionRef.current.onstart = () => setIsListening(true);
-
-    recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
+    recognitionRef.current.onend = () => setIsListening(false);
+    recognitionRef.current.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript || "";
         if (event.results[i].isFinal) {
           setInput((prev) => `${prev}${transcript}`);
         }
       }
     };
+  }, [language]);
 
-    recognitionRef.current.onend = () => setIsListening(false);
+  useEffect(() => {
+    const loadVoices = () => {
+      const available = window.speechSynthesis.getVoices();
+      if (available.length) setVoices(available);
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
   }, []);
+
+  const pickPreferredVoice = () => {
+    const localePrefix = language === "en" ? "en" : "hi";
+    const localeVoices = voices.filter((voice) =>
+      voice.lang.toLowerCase().startsWith(localePrefix)
+    );
+    return localeVoices[0] || voices[0];
+  };
 
   const speakText = (text: string) => {
     if (!text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
+    utterance.lang = language === "en" ? "en-US" : "hi-IN";
+    const voice = pickPreferredVoice();
+    if (voice) utterance.voice = voice;
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     window.speechSynthesis.speak(utterance);
   };
 
-  const startListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.start();
-    }
-  };
-
-  const sendMessage = (text: string) => {
+  const sendMessage = async (text: string) => {
     if (!text.trim()) return;
-
-    const newMessages = [...messages, { role: "user" as const, content: text }];
+    const userText = text.trim();
+    const newMessages = [...messages, { role: "user" as const, content: userText }];
     setMessages(newMessages);
     setInput("");
 
-    setTimeout(() => {
-      const aiResponse = responses[Math.floor(Math.random() * responses.length)];
-      const updatedMessages = [...newMessages, { role: "assistant" as const, content: aiResponse }];
-      setMessages(updatedMessages);
+    if (!isCybercrimePrompt(userText)) {
+      const scopeMessage =
+        language === "en"
+          ? "I can only answer questions related to cybercrime and cybersecurity. Please ask about scams, phishing, passwords, hacking, fraud, malware, or online safety."
+          : "मैं केवल साइबरक्राइम और साइबर सुरक्षा से जुड़े प्रश्नों का उत्तर देता हूँ। कृपया स्कैम, फिशिंग, पासवर्ड, हैकिंग, फ्रॉड, मैलवेयर या ऑनलाइन सुरक्षा से जुड़ा प्रश्न पूछें।";
+      setMessages([...newMessages, { role: "assistant", content: scopeMessage }]);
+      lastAssistantMessageRef.current = scopeMessage;
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch("/api/ai-assistant/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: userText,
+          language,
+          history: messages.slice(-8),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.reply) {
+        throw new Error(data?.error || "AI request failed.");
+      }
+
+      const aiResponse = data.reply as string;
+      setMessages([...newMessages, { role: "assistant", content: aiResponse }]);
       lastAssistantMessageRef.current = aiResponse;
-      speakText(aiResponse);
-    }, 450);
-  };
-
-  const handleSendMessage = () => sendMessage(input);
-
-  const handleClear = () => {
-    setMessages([]);
-    lastAssistantMessageRef.current = "";
-    window.speechSynthesis.cancel();
+      if (autoSpeak) speakText(aiResponse);
+    } catch (error) {
+      const fallback =
+        language === "en"
+          ? `I could not reach the AI service right now. ${
+              error instanceof Error ? error.message : "Please try again."
+            }`
+          : `अभी AI सेवा से कनेक्शन नहीं हो पाया। ${
+              error instanceof Error ? error.message : "कृपया दोबारा प्रयास करें।"
+            }`;
+      setMessages([...newMessages, { role: "assistant", content: fallback }]);
+      lastAssistantMessageRef.current = fallback;
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleRepeat = () => {
@@ -101,22 +216,69 @@ export default function AIAssistant() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-8"
+          className="relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-black/40 to-blue-500/10 p-6 mb-6"
         >
-          <div className="flex justify-center mb-5">
-            <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-              <Bot className="w-12 h-12 text-cyan-400" />
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-cyan-500/20 blur-3xl" />
+          <div className="relative flex items-start gap-4">
+            <div className="p-3 rounded-xl bg-cyan-500/20 border border-cyan-400/30">
+              <Bot className="w-9 h-9 text-cyan-300" />
             </div>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-3">
-            <span className="text-glow">AI Security Assistant</span>
-          </h1>
-          <p className="text-lg text-foreground/70 max-w-2xl mx-auto">
-            Ask practical cybersecurity questions and get quick, clear guidance.
-          </p>
-          <div className="flex justify-center gap-2 mt-4 text-xs">
-            <span className="px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">English Voice</span>
-            <span className="px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">Voice + Text</span>
+            <div className="flex-1">
+              <h1 className="text-3xl md:text-4xl font-bold mb-2">
+                <span className="text-glow">CyberRakshak Assistant</span>
+              </h1>
+              <p className="text-foreground/75">
+                {language === "en"
+                  ? "Cybercrime-only assistant. Text replies by default, voice replies only when enabled."
+                  : "केवल साइबरक्राइम सहायक। डिफ़ॉल्ट रूप से टेक्स्ट उत्तर, आवाज़ उत्तर तभी जब आप सक्षम करें।"}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <button
+                  onClick={() => setLanguage("en")}
+                  className={`px-3 py-1 rounded-full text-sm border transition ${
+                    language === "en"
+                      ? "bg-cyan-500 text-black border-cyan-400"
+                      : "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                  }`}
+                >
+                  English
+                </button>
+                <button
+                  onClick={() => setLanguage("hi")}
+                  className={`px-3 py-1 rounded-full text-sm border transition ${
+                    language === "hi"
+                      ? "bg-cyan-500 text-black border-cyan-400"
+                      : "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                  }`}
+                >
+                  हिंदी
+                </button>
+                <button
+                  onClick={() => {
+                    const next = !autoSpeak;
+                    setAutoSpeak(next);
+                    if (!next) window.speechSynthesis.cancel();
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm border transition inline-flex items-center gap-2 ${
+                    autoSpeak
+                      ? "bg-green-500/20 border-green-400/50 text-green-300"
+                      : "bg-black/30 border-cyan-500/40 text-cyan-300"
+                  }`}
+                >
+                  {autoSpeak ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+                  {autoSpeak
+                    ? language === "en"
+                      ? "Voice Reply ON"
+                      : "Voice Reply ON"
+                    : language === "en"
+                      ? "Voice Reply OFF"
+                      : "Voice Reply OFF"}
+                </button>
+                <span className="px-3 py-1 rounded-full text-sm border border-orange-500/40 bg-orange-500/15 text-orange-200">
+                  {language === "en" ? "Cybercrime Topics Only" : "केवल साइबरक्राइम विषय"}
+                </span>
+              </div>
+            </div>
           </div>
         </motion.div>
 
@@ -127,13 +289,13 @@ export default function AIAssistant() {
         >
           <div className="flex items-center gap-2 mb-3 text-sm text-foreground/70">
             <Sparkles size={16} className="text-cyan-300" />
-            Try quick prompts
+            {language === "en" ? "Quick cyber prompts" : "त्वरित साइबर प्रश्न"}
           </div>
           <div className="flex flex-wrap gap-2">
-            {quickPrompts.map((prompt) => (
+            {(language === "en" ? quickPromptsEn : quickPromptsHi).map((prompt) => (
               <button
                 key={prompt}
-                onClick={() => sendMessage(prompt)}
+                onClick={() => void sendMessage(prompt)}
                 className="text-left px-3 py-2 rounded-lg bg-black/25 border border-cyan-500/20 text-sm text-foreground/85 hover:border-cyan-400/40 hover:bg-cyan-500/10 transition"
               >
                 {prompt}
@@ -146,35 +308,60 @@ export default function AIAssistant() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="card-gradient border border-cyan-500/20 p-5 rounded-xl mb-4 h-[24rem] overflow-y-auto space-y-4"
+          className="card-gradient border border-cyan-500/20 p-5 rounded-xl mb-4 h-[26rem] overflow-y-auto space-y-4"
         >
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center text-center">
-              <div>
-                <p className="text-foreground/60 text-lg">
-                  Start with a quick prompt, microphone, or type your question.
-                </p>
-              </div>
+              <p className="text-foreground/60 text-lg max-w-xl">
+                {language === "en"
+                  ? "Ask a cybercrime-related question using text or microphone."
+                  : "टेक्स्ट या माइक्रोफ़ोन से साइबरक्राइम से जुड़ा प्रश्न पूछें।"}
+              </p>
             </div>
           ) : (
             messages.map((msg, idx) => (
               <motion.div
-                key={idx}
+                key={`${msg.role}-${idx}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
+                {msg.role === "assistant" && (
+                  <div className="h-8 w-8 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                    <Bot size={16} className="text-cyan-300" />
+                  </div>
+                )}
                 <div
-                  className={`max-w-[80%] px-4 py-3 rounded-xl text-sm leading-relaxed ${
+                  className={`max-w-[82%] px-4 py-3 rounded-xl text-sm leading-relaxed ${
                     msg.role === "user"
                       ? "bg-cyan-500 text-background rounded-br-none"
-                      : "bg-black/30 text-foreground border border-cyan-500/25 rounded-bl-none"
+                      : "bg-black/35 text-foreground border border-cyan-500/25 rounded-bl-none"
                   }`}
                 >
                   {msg.content}
                 </div>
               </motion.div>
             ))
+          )}
+
+          {isGenerating && (
+            <div className="flex justify-start">
+              <div className="h-8 w-8 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                <Bot size={16} className="text-cyan-300" />
+              </div>
+              <div className="ml-2 max-w-[82%] px-4 py-3 rounded-xl text-sm leading-relaxed bg-black/35 text-foreground border border-cyan-500/25 rounded-bl-none">
+                <div className="flex items-center gap-2">
+                  <span className="text-foreground/70">
+                    {language === "en" ? "Thinking" : "उत्तर तैयार हो रहा है"}
+                  </span>
+                  <span className="inline-flex items-end gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-bounce [animation-delay:-0.2s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-bounce [animation-delay:-0.1s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-bounce" />
+                  </span>
+                </div>
+              </div>
+            </div>
           )}
         </motion.div>
 
@@ -189,13 +376,17 @@ export default function AIAssistant() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type your cybersecurity question..."
+              onKeyDown={(e) => e.key === "Enter" && void sendMessage(input)}
+              placeholder={
+                language === "en"
+                  ? "Ask a cybercrime-related question..."
+                  : "साइबरक्राइम से जुड़ा प्रश्न पूछें..."
+              }
               className="flex-1 px-4 py-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-foreground placeholder-foreground/50 focus:outline-none focus:border-cyan-500/60 transition-colors"
             />
             <button
-              onClick={startListening}
-              disabled={isListening}
+              onClick={() => recognitionRef.current?.start()}
+              disabled={isListening || isGenerating}
               className={`p-3 rounded-lg font-semibold transition-all duration-300 ${
                 isListening
                   ? "bg-red-500/50 text-white animate-pulse"
@@ -206,33 +397,40 @@ export default function AIAssistant() {
               <Mic size={20} />
             </button>
             <button
-              onClick={handleSendMessage}
-              className="px-4 py-3 bg-cyan-500 text-background rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(0,204,255,0.6)] transition-all duration-300"
+              onClick={handleRepeat}
+              disabled={isSpeaking || messages.length === 0}
+              className={`p-3 rounded-lg font-semibold transition-all duration-300 ${
+                isSpeaking
+                  ? "bg-cyan-500 text-background"
+                  : "bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50"
+              }`}
+              title="Speak aloud"
+            >
+              <Volume2 size={20} />
+            </button>
+            <button
+              onClick={() => void sendMessage(input)}
+              disabled={isGenerating}
+              className="px-4 py-3 bg-cyan-500 text-background rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(0,204,255,0.6)] transition-all duration-300 disabled:opacity-60"
               title="Send"
             >
-              <Send size={20} />
+              {isGenerating ? "..." : <Send size={20} />}
             </button>
           </div>
 
           <div className="flex gap-3">
             <button
-              onClick={handleClear}
+              onClick={() => {
+                setMessages([]);
+                setInput("");
+                setIsGenerating(false);
+                lastAssistantMessageRef.current = "";
+                window.speechSynthesis.cancel();
+              }}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-cyan-500/30 rounded-lg text-foreground/70 hover:bg-cyan-500/10 transition-colors"
             >
               <RotateCcw size={18} />
-              Clear Chat
-            </button>
-            <button
-              onClick={handleRepeat}
-              disabled={isSpeaking || messages.length === 0}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold transition-all duration-300 ${
-                isSpeaking
-                  ? "bg-purple-500 text-background"
-                  : "bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50"
-              }`}
-            >
-              <Volume2 size={18} />
-              {isSpeaking ? "Speaking..." : "Repeat Last Reply"}
+              {language === "en" ? "Clear Chat" : "चैट साफ करें"}
             </button>
           </div>
         </motion.div>

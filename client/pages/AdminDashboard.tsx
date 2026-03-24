@@ -1,306 +1,433 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import {
-  LayoutDashboard,
-  AlertTriangle,
-  Shield,
-  TrendingUp,
-  CalendarDays,
-  Activity,
-  ListChecks,
-} from "lucide-react";
-import { ScamAlert } from "@shared/api";
+import { Shield, AlertTriangle, BarChart3, LogOut, Eye, EyeOff } from "lucide-react";
 
-interface ReportStatsResponse {
-  total: number;
-  byType: Record<string, number>;
-  byMonth: Record<string, number>;
-  averagePerMonth: number;
-}
+type AdminTab =
+  | "dashboard"
+  | "reports"
+  | "alerts"
+  | "analytics";
 
-interface RecentReportsResponse {
-  totalReports: number;
-  commonTypes: { type: string; count: number }[];
-  recentTrends: string;
-  lastUpdated: string;
-}
+const ADMIN_TOKEN_KEY = "cyber_admin_token";
 
-type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
+type AdminReport = {
+  id: string;
+  reporterName?: string;
+  reporterAge?: number;
+  type: string;
+  description: string;
+  userId: string;
+  screenshotBase64?: string;
+  timestamp: string;
+  moderationStatus: "pending" | "approved" | "rejected" | "investigating";
+  authenticity: "unverified" | "verified" | "suspected-fake";
+  moderatorNote?: string;
+};
+
+type AdminAlert = {
+  id: string;
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  type: string;
+  targetAudience: string;
+  timestamp: string;
+};
+
+type AdminUser = {
+  id: string;
+  reportCount: number;
+  quizAttempts: number;
+  aiQueries: number;
+  lastActivity: string;
+};
 
 export default function AdminDashboard() {
-  const [loading, setLoading] = useState(true);
-  const [alerts, setAlerts] = useState<ScamAlert[]>([]);
-  const [stats, setStats] = useState<ReportStatsResponse | null>(null);
-  const [recent, setRecent] = useState<RecentReportsResponse | null>(null);
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
-  const [refreshAt, setRefreshAt] = useState<string>(new Date().toISOString());
+  const [tab, setTab] = useState<AdminTab>("dashboard");
+  const [token, setToken] = useState<string>("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [dashboard, setDashboard] = useState<any>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [reports, setReports] = useState<AdminReport[]>([]);
+  const [alerts, setAlerts] = useState<AdminAlert[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+
+  const [newAlert, setNewAlert] = useState({
+    title: "",
+    description: "",
+    severity: "medium",
+    type: "",
+    targetAudience: "",
+  });
 
   useEffect(() => {
-    void loadDashboardData();
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
   }, []);
 
-  async function loadDashboardData() {
+  async function verifySession(sessionToken: string) {
+    try {
+      const response = await fetch("/api/admin/session", {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      const data = await response.json();
+      if (data.active) {
+        setLoggedIn(true);
+        await loadAllData(sessionToken);
+      }
+    } catch {
+      // session invalid
+    }
+  }
+
+  function authHeaders(sessionToken = token) {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    };
+  }
+
+  async function handleLogin() {
+    setError(null);
+    setAuthLoading(true);
+    try {
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Login failed");
+      setToken(data.token);
+      setLoggedIn(true);
+      await loadAllData(data.token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    if (token) {
+      await fetch("/api/admin/logout", {
+        method: "POST",
+        headers: authHeaders(),
+      }).catch(() => undefined);
+    }
+    setToken("");
+    setLoggedIn(false);
+  }
+
+  async function loadAllData(sessionToken = token) {
+    if (!sessionToken) return;
     setLoading(true);
     setError(null);
     try {
-      const [alertsRes, statsRes, recentRes] = await Promise.all([
-        fetch("/api/live-alerts"),
-        fetch("/api/scam-report-stats"),
-        fetch("/api/recent-reports"),
+      const headers = authHeaders(sessionToken);
+      const [dRes, uRes, rRes, aRes, anRes] = await Promise.all([
+        fetch("/api/admin/dashboard", { headers }),
+        fetch("/api/admin/users", { headers }),
+        fetch("/api/admin/reports", { headers }),
+        fetch("/api/admin/alerts", { headers }),
+        fetch("/api/admin/analytics", { headers }),
       ]);
 
-      const alertsPayload = alertsRes.ok ? await alertsRes.json() : { data: [] };
-      const statsPayload = statsRes.ok ? await statsRes.json() : null;
-      const recentPayload = recentRes.ok ? await recentRes.json() : null;
+      if ([dRes, uRes, rRes, aRes].some((res) => res.status === 401)) {
+        throw new Error("Session expired. Please login again.");
+      }
 
-      setAlerts(Array.isArray(alertsPayload.data) ? alertsPayload.data : []);
-      setStats(statsPayload);
-      setRecent(recentPayload);
-      setRefreshAt(new Date().toISOString());
-    } catch {
-      setError("Failed to load admin data.");
+      setDashboard(await dRes.json());
+      setUsers((await uRes.json()).data || []);
+      setReports((await rRes.json()).data || []);
+      setAlerts((await aRes.json()).data || []);
+      setAnalytics(await anRes.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load admin data");
     } finally {
       setLoading(false);
     }
   }
 
-  const filteredAlerts = useMemo(() => {
-    if (severityFilter === "all") return alerts;
-    return alerts.filter((alert) => alert.severity === severityFilter);
-  }, [alerts, severityFilter]);
+  async function updateReport(reportId: string, payload: Partial<AdminReport>) {
+    await fetch(`/api/admin/reports/${reportId}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    await loadAllData();
+  }
 
-  const criticalCount = alerts.filter((a) => a.severity === "critical").length;
-  const highCount = alerts.filter((a) => a.severity === "high").length;
-  const topScamType =
-    stats && Object.keys(stats.byType).length > 0
-      ? Object.entries(stats.byType).sort((a, b) => b[1] - a[1])[0][0]
-      : "N/A";
+  async function createAlert() {
+    await fetch("/api/admin/alerts", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(newAlert),
+    });
+    setNewAlert({ title: "", description: "", severity: "medium", type: "", targetAudience: "" });
+    await loadAllData();
+  }
 
-  return (
-    <div
-      className="min-h-screen pt-24 pb-12 bg-background bg-cover bg-center bg-no-repeat"
-      style={{
-        backgroundImage:
-          "linear-gradient(rgba(5, 12, 24, 0.9), rgba(5, 12, 24, 0.92)), url('/admin-dashboard-bg.jpg')",
-      }}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-10"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
-              <LayoutDashboard className="w-8 h-8 text-cyan-400" />
+  async function deleteAlert(id: string) {
+    await fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers: authHeaders() });
+    await loadAllData();
+  }
+
+  async function editAlert(alert: AdminAlert) {
+    const title = window.prompt("Edit alert title", alert.title);
+    if (!title) return;
+    const description = window.prompt("Edit alert description", alert.description);
+    if (!description) return;
+    await fetch(`/api/admin/alerts/${alert.id}`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify({ title, description }),
+    });
+    await loadAllData();
+  }
+
+  const reportStatusCounts = useMemo(
+    () =>
+      reports.reduce<Record<string, number>>((acc, report) => {
+        acc[report.moderationStatus] = (acc[report.moderationStatus] || 0) + 1;
+        return acc;
+      }, {}),
+    [reports]
+  );
+
+  if (!loggedIn) {
+    return (
+      <div className="min-h-screen bg-background pt-24 pb-12">
+        <div className="max-w-md mx-auto px-4">
+          <div className="card-gradient p-6 rounded-xl border border-cyan-500/20">
+            <div className="text-center mb-5">
+              <Shield className="w-10 h-10 text-cyan-300 mx-auto mb-2" />
+              <h1 className="text-2xl font-bold">Admin Login</h1>
+              <p className="text-sm text-foreground/70">CyberRakshak control panel</p>
             </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground">Admin Dashboard</h1>
-              <p className="text-foreground/70">
-                Monitor alerts, scam trends, and reporting activity in real time.
+            <div className="space-y-3">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-3"
+              />
+              <div className="relative">
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  type={showPassword ? "text" : "password"}
+                  className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-3 pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute inset-y-0 right-0 flex items-center justify-center px-3 text-foreground/70 hover:text-cyan-300 transition"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              <p className="text-xs text-foreground/50 mt-1">
+                Please type your admin username and password.
               </p>
+              <div className="bg-black/20 border border-cyan-500/10 rounded-lg px-3 py-2 text-xs text-foreground/60 space-y-1">
+                <p>🔑 <span className="text-cyan-300/80">Username:</span> CyberRakshak_21</p>
+                <p>🔒 <span className="text-cyan-300/80">Password:</span> CyberRakshak@1234</p>
+              </div>
+              {error && <p className="text-red-300 text-sm">{error}</p>}
+              <button
+                onClick={handleLogin}
+                disabled={authLoading}
+                className="w-full bg-cyan-500 text-black font-semibold rounded-lg py-3 hover:bg-cyan-400 transition disabled:opacity-60"
+              >
+                {authLoading ? "Signing in..." : "Login"}
+              </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 text-sm">
-            <span className="px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
-              Last refresh: {new Date(refreshAt).toLocaleTimeString()}
-            </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card-gradient p-4 rounded-xl border border-cyan-500/20 flex flex-wrap items-center justify-between gap-3"
+        >
+          <div>
+            <h1 className="text-2xl font-bold">Admin Panel</h1>
+            <p className="text-foreground/70 text-sm">Complete platform control center</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => loadAllData()} className="px-3 py-2 rounded-lg border border-cyan-500/30 text-cyan-300">
+              Refresh
+            </button>
             <button
-              onClick={() => void loadDashboardData()}
-              className="px-3 py-1 rounded-full border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 transition"
+              onClick={handleLogout}
+              className="px-3 py-2 rounded-lg border border-red-500/30 text-red-300 inline-flex items-center gap-2"
             >
-              Refresh Data
+              <LogOut size={15} />
+              Logout
             </button>
           </div>
         </motion.div>
 
-        {error && (
-          <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-200 p-3 rounded-lg">
-            {error}
+        {error && <p className="text-red-300 text-sm">{error}</p>}
+        {loading && <p className="text-foreground/70 text-sm">Loading admin data...</p>}
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "dashboard", label: "Dashboard", icon: BarChart3 },
+            { key: "reports", label: "Reports", icon: AlertTriangle },
+            { key: "alerts", label: "Threat Alerts", icon: AlertTriangle },
+            { key: "analytics", label: "Analytics", icon: BarChart3 },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setTab(item.key as AdminTab)}
+                className={`px-3 py-2 rounded-lg border text-sm inline-flex items-center gap-2 ${
+                  tab === item.key
+                    ? "bg-cyan-500 text-black border-cyan-400"
+                    : "border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                }`}
+              >
+                <Icon size={15} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "dashboard" && (
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <MetricCard title="Total Scam Reports" value={String(dashboard?.metrics?.totalScamReports || 0)} />
+            <MetricCard title="Active Users" value={String(dashboard?.metrics?.activeUsers || 0)} />
+            <MetricCard title="Quiz Participation %" value={String(dashboard?.metrics?.quizParticipationRate || 0)} />
+            <MetricCard title="API Errors" value={String(dashboard?.metrics?.apiErrors || 0)} />
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            icon={<AlertTriangle size={18} />}
-            label="Active Alerts"
-            value={loading ? "..." : String(alerts.length)}
-            tone="red"
-          />
-          <StatCard
-            icon={<Shield size={18} />}
-            label="Critical + High"
-            value={loading ? "..." : String(criticalCount + highCount)}
-            tone="orange"
-          />
-          <StatCard
-            icon={<Activity size={18} />}
-            label="Total Reports"
-            value={loading ? "..." : String(stats?.total ?? 0)}
-            tone="cyan"
-          />
-          <StatCard
-            icon={<TrendingUp size={18} />}
-            label="Top Scam Type"
-            value={loading ? "..." : topScamType}
-            tone="blue"
-          />
-        </div>
-
-        <div className="grid xl:grid-cols-3 gap-6">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="xl:col-span-2 card-gradient border border-cyan-500/20 p-5 rounded-xl"
-          >
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <ListChecks size={18} className="text-cyan-300" />
-                Live Alert Queue
-              </h2>
-              <div className="flex items-center gap-2">
-                {(["all", "critical", "high", "medium", "low"] as const).map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => setSeverityFilter(level)}
-                    className={`px-2.5 py-1 rounded-md text-xs border transition ${
-                      severityFilter === level
-                        ? "bg-cyan-500 text-black border-cyan-400"
-                        : "border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-                    }`}
-                  >
-                    {level.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+        {tab === "reports" && (
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-4 gap-3">
+              <MetricCard title="Pending" value={String(reportStatusCounts.pending || 0)} />
+              <MetricCard title="Approved" value={String(reportStatusCounts.approved || 0)} />
+              <MetricCard title="Rejected" value={String(reportStatusCounts.rejected || 0)} />
+              <MetricCard title="Investigating" value={String(reportStatusCounts.investigating || 0)} />
             </div>
-
-            <div className="space-y-3 max-h-[420px] overflow-auto pr-1">
-              {!loading && filteredAlerts.length === 0 && (
-                <p className="text-foreground/60 text-sm">No alerts match the current filter.</p>
-              )}
-              {loading && <p className="text-foreground/60 text-sm">Loading alerts...</p>}
-              {filteredAlerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className="p-4 rounded-lg bg-black/30 border border-cyan-500/15 hover:border-cyan-500/35 transition"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-foreground">{alert.title}</h3>
-                      <p className="text-sm text-foreground/70 mt-1">{alert.description}</p>
+            <div className="space-y-3">
+              {reports.map((report) => (
+                <div key={report.id} className="card-gradient p-4 rounded-xl border border-cyan-500/20">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex-1 mr-4">
+                      <p className="font-semibold">{report.type}</p>
+                      <p className="text-sm text-foreground/70">{report.description}</p>
+                      <div className="text-xs text-foreground/50 mt-2 space-y-1">
+                        <p>{report.id} | {new Date(report.timestamp).toLocaleString()}</p>
+                        {(report.reporterName || report.reporterAge) && (
+                          <p>
+                            Reporter Details: {report.reporterName || "N/A"} {report.reporterAge ? `(${report.reporterAge} yrs)` : ""}
+                          </p>
+                        )}
+                        <p>User ID: {report.userId}</p>
+                      </div>
+                      
+                      {report.screenshotBase64 && (
+                        <div className="mt-3">
+                          <p className="text-xs font-semibold mb-1 text-cyan-300">Screenshot:</p>
+                          <img src={report.screenshotBase64} alt="Scam Screenshot" className="max-w-xs rounded border border-cyan-500/20 shadow" />
+                        </div>
+                      )}
                     </div>
-                    <span
-                      className={`text-xs uppercase px-2 py-1 rounded ${
-                        alert.severity === "critical"
-                          ? "bg-red-500/20 text-red-300"
-                          : alert.severity === "high"
-                            ? "bg-orange-500/20 text-orange-300"
-                            : alert.severity === "medium"
-                              ? "bg-yellow-500/20 text-yellow-300"
-                              : "bg-blue-500/20 text-blue-300"
-                      }`}
-                    >
-                      {alert.severity}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-foreground/70">
-                    <span className="px-2 py-1 rounded bg-white/5">{alert.type}</span>
-                    <span className="px-2 py-1 rounded bg-white/5">{alert.targetAudience}</span>
-                    <span className="px-2 py-1 rounded bg-white/5">
-                      {alert.reportedCases.toLocaleString()} reports
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                       <button className="px-2 py-1 rounded border border-green-500/30 text-green-300 hover:bg-green-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "approved", authenticity: "verified" })}>Approve</button>
+                       <button className="px-2 py-1 rounded border border-red-500/30 text-red-300 hover:bg-red-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "rejected", authenticity: "suspected-fake" })}>Reject</button>
+                       <button className="px-2 py-1 rounded border border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "investigating" })}>Investigate</button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
+        )}
 
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="space-y-6"
-          >
-            <section className="card-gradient border border-cyan-500/20 p-5 rounded-xl">
-              <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                <CalendarDays size={17} className="text-cyan-300" />
-                Monthly Reports
-              </h2>
-              <div className="space-y-2">
-                {!loading &&
-                  stats &&
-                  Object.entries(stats.byMonth)
-                    .sort(([a], [b]) => (a > b ? -1 : 1))
-                    .slice(0, 5)
-                    .map(([month, count]) => (
-                      <div key={month} className="flex items-center justify-between text-sm">
-                        <span className="text-foreground/70">{month}</span>
-                        <span className="font-semibold text-cyan-300">{count}</span>
-                      </div>
-                    ))}
-                {loading && <p className="text-sm text-foreground/60">Loading monthly metrics...</p>}
-              </div>
-            </section>
+        {tab === "alerts" && (
+          <div className="grid lg:grid-cols-3 gap-4">
+            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20 space-y-2">
+              <h2 className="font-bold">Create Threat Alert</h2>
+              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Title" value={newAlert.title} onChange={(e) => setNewAlert((p) => ({ ...p, title: e.target.value }))} />
+              <textarea className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Description" value={newAlert.description} onChange={(e) => setNewAlert((p) => ({ ...p, description: e.target.value }))} />
+              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Type" value={newAlert.type} onChange={(e) => setNewAlert((p) => ({ ...p, type: e.target.value }))} />
+              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Target Audience" value={newAlert.targetAudience} onChange={(e) => setNewAlert((p) => ({ ...p, targetAudience: e.target.value }))} />
+              <select className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" value={newAlert.severity} onChange={(e) => setNewAlert((p) => ({ ...p, severity: e.target.value as "low" | "medium" | "high" | "critical" }))}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+              <button onClick={createAlert} className="px-3 py-2 rounded-lg bg-cyan-500 text-black font-semibold">Publish Alert</button>
+            </div>
+            <div className="lg:col-span-2 space-y-2">
+              {alerts.map((alert) => (
+                <div key={alert.id} className="card-gradient p-4 rounded-xl border border-cyan-500/20 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{alert.title}</p>
+                    <p className="text-sm text-foreground/70">{alert.description}</p>
+                    <p className="text-xs text-foreground/50 mt-1">{alert.type} | {alert.targetAudience}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => editAlert(alert)} className="px-2 py-1 rounded border border-cyan-500/30 text-cyan-300 text-xs hover:bg-cyan-500/10 transition">Edit</button>
+                    <button onClick={() => deleteAlert(alert.id)} className="px-2 py-1 rounded border border-red-500/30 text-red-300 text-xs hover:bg-red-500/10 transition">Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-            <section className="card-gradient border border-cyan-500/20 p-5 rounded-xl">
-              <h2 className="text-lg font-bold mb-3">Common Scam Types</h2>
-              <div className="space-y-2">
-                {!loading &&
-                  recent?.commonTypes?.slice(0, 5).map((item) => (
-                    <div key={item.type} className="flex items-center justify-between text-sm">
-                      <span className="text-foreground/70">{item.type}</span>
-                      <span className="font-semibold text-cyan-300">{item.count}</span>
-                    </div>
-                  ))}
-                {loading && <p className="text-sm text-foreground/60">Loading trend data...</p>}
-              </div>
-            </section>
+        {tab === "analytics" && (
+          <div className="card-gradient p-5 rounded-xl border border-cyan-500/20">
+            <h2 className="text-xl font-bold mb-3">Analytics & Monitoring</h2>
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+              <MetricCard title="Total Scam Reports" value={String(analytics?.totalScamReports || 0)} />
+              <MetricCard title="Active Users" value={String(analytics?.activeUsers || 0)} />
+              <MetricCard title="Quiz Participation %" value={String(analytics?.quizParticipationRate || 0)} />
+              <MetricCard title="AI Queries" value={String(analytics?.aiQueries || 0)} />
+            </div>
+            <div className="space-y-2">
+              {(analytics?.commonScamTypes || []).map((item: any) => (
+                <div key={item.type} className="flex justify-between p-2 border border-cyan-500/20 rounded">
+                  <span>{item.type}</span>
+                  <span className="font-semibold">{item.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-            <section className="card-gradient border border-cyan-500/20 p-5 rounded-xl">
-              <h2 className="text-lg font-bold mb-2">Trend Note</h2>
-              <p className="text-sm text-foreground/75">{recent?.recentTrends ?? "No trend summary available yet."}</p>
-            </section>
-          </motion.div>
-        </div>
       </div>
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone: "red" | "orange" | "cyan" | "blue";
-}) {
-  const toneClass =
-    tone === "red"
-      ? "border-red-500/25 bg-red-500/10 text-red-300"
-      : tone === "orange"
-        ? "border-orange-500/25 bg-orange-500/10 text-orange-300"
-        : tone === "blue"
-          ? "border-blue-500/25 bg-blue-500/10 text-blue-300"
-          : "border-cyan-500/25 bg-cyan-500/10 text-cyan-300";
-
+function MetricCard({ title, value }: { title: string; value: string }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`rounded-xl p-4 border ${toneClass}`}
-    >
-      <div className="flex items-center gap-2 text-sm mb-2">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-foreground break-words">{value}</p>
-    </motion.div>
+    <div className="card-gradient p-4 rounded-xl border border-cyan-500/20">
+      <p className="text-sm text-foreground/70">{title}</p>
+      <p className="text-2xl font-bold">{value}</p>
+    </div>
   );
 }

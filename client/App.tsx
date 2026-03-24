@@ -13,6 +13,8 @@ import ReportScam from "./pages/ReportScam";
 import AIAssistant from "./pages/AIAssistant";
 import SecurityTools from "./pages/SecurityTools";
 import NotFound from "./pages/NotFound";
+import GlobalAIAssistantButton from "@/components/GlobalAIAssistantButton";
+import AdminDashboard from "./pages/AdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -33,9 +35,11 @@ export default function App() {
             <Route path="/report-scam" element={<ReportScam />} />
             <Route path="/ai-assistant" element={<AIAssistant />} />
             <Route path="/security-tools" element={<SecurityTools />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <GlobalAIAssistantButton />
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
