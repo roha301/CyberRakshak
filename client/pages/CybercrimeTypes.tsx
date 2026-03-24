@@ -8,9 +8,10 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { CrimeType } from "@shared/api";
+import { INITIAL_CRIME_TYPES } from "@/lib/initial-data";
 
 export default function CybercrimeTypes() {
-  const [crimeTypes, setCrimeTypes] = useState<CrimeType[]>([]);
+  const [crimeTypes, setCrimeTypes] = useState<CrimeType[]>(INITIAL_CRIME_TYPES);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -22,10 +23,13 @@ export default function CybercrimeTypes() {
     try {
       setLoading(true);
       const response = await fetch("/api/cybercrime-types");
+      if (!response.ok) throw new Error("API failed");
       const data = await response.json();
-      setCrimeTypes(data.data);
+      if (data.data && data.data.length > 0) {
+        setCrimeTypes(data.data);
+      }
     } catch (error) {
-      console.error("Error fetching crime types:", error);
+      console.error("Error fetching crime types, using fallback:", error);
     } finally {
       setLoading(false);
     }

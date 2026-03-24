@@ -2,9 +2,10 @@ import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { Check, CheckCircle2, Clock, Shield } from "lucide-react";
 import { ChecklistItem } from "@shared/api";
+import { INITIAL_CHECKLIST_ITEMS } from "@/lib/initial-data";
 
 export default function SafetyChecklist() {
-  const [items, setItems] = useState<ChecklistItem[]>([]);
+  const [items, setItems] = useState<ChecklistItem[]>(INITIAL_CHECKLIST_ITEMS);
   const [loading, setLoading] = useState(true);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
 
@@ -16,10 +17,13 @@ export default function SafetyChecklist() {
     try {
       setLoading(true);
       const response = await fetch("/api/safety-checklist");
+      if (!response.ok) throw new Error("API failed");
       const data = await response.json();
-      setItems(data.data);
+      if (data.data && data.data.length > 0) {
+        setItems(data.data);
+      }
     } catch (error) {
-      console.error("Error fetching checklist:", error);
+      console.error("Error fetching checklist, using fallback:", error);
     } finally {
       setLoading(false);
     }

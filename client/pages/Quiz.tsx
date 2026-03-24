@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { Brain, Trophy, Flame, RotateCw, ShieldAlert, Timer } from "lucide-react";
 import { QuizQuestion } from "@shared/api";
+import { INITIAL_QUIZ_QUESTIONS } from "@/lib/initial-data";
 
 type QuizMode = "rapid" | "scenario" | "trick";
 type Difficulty = "easy" | "medium" | "hard" | "all";
@@ -138,10 +139,13 @@ export default function Quiz() {
   async function fetchCategories() {
     try {
       const response = await fetch("/api/quiz-categories");
+      if (!response.ok) throw new Error();
       const data = await response.json();
       setAllCategories(data.categories || []);
     } catch {
-      setAllCategories([]);
+      // Fallback categories from initial data
+      const categories = [...new Set(INITIAL_QUIZ_QUESTIONS.map(q => q.category))];
+      setAllCategories(categories);
     }
   }
 
@@ -158,21 +162,30 @@ export default function Quiz() {
       if (difficulty !== "all") params.set("difficulty", difficulty);
 
       const response = await fetch(`/api/quiz/questions?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("Unable to load quiz questions");
-      }
+      if (!response.ok) throw new Error("API failed");
 
       const data = await response.json();
       const items: QuizQuestion[] = data.data || [];
 
       if (!items.length) {
-        throw new Error("No questions found for the selected filters");
+        throw new Error("No questions found");
       }
 
       setQuestions(items);
       setStage("active");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start quiz");
+      console.error("Quiz API failed, using fallback:", err);
+      // Filter the initial questions locally as a fallback
+      let filtered = [...INITIAL_QUIZ_QUESTIONS];
+      if (selectedCategory !== "all") filtered = filtered.filter(q => q.category === selectedCategory);
+      if (difficulty !== "all") filtered = filtered.filter(q => q.difficulty === difficulty);
+      
+      if (filtered.length > 0) {
+        setQuestions(filtered.slice(0, questionLimit));
+        setStage("active");
+      } else {
+        setError("No questions available locally for these filters.");
+      }
     } finally {
       setLoading(false);
     }

@@ -2,9 +2,10 @@ import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { AlertTriangle, Shield, Clock } from "lucide-react";
 import { ScamAlert } from "@shared/api";
+import { INITIAL_LIVE_ALERTS } from "@/lib/initial-data";
 
 export default function LiveAlerts() {
-  const [alerts, setAlerts] = useState<ScamAlert[]>([]);
+  const [alerts, setAlerts] = useState<ScamAlert[]>(INITIAL_LIVE_ALERTS);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string | null>(null);
 
@@ -16,10 +17,13 @@ export default function LiveAlerts() {
     try {
       setLoading(true);
       const response = await fetch("/api/live-alerts");
+      if (!response.ok) throw new Error("API failed");
       const data = await response.json();
-      setAlerts(data.data);
+      if (data.data && data.data.length > 0) {
+        setAlerts(data.data);
+      }
     } catch (error) {
-      console.error("Error fetching alerts:", error);
+      console.error("Error fetching alerts, using fallback:", error);
     } finally {
       setLoading(false);
     }
