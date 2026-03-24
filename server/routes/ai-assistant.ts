@@ -1,43 +1,21 @@
-﻿import { RequestHandler } from "express";
+import { RequestHandler } from "express";
 import { AiAssistantRequest, AiAssistantResponse } from "@shared/api";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getAdminFaqEntries, recordAiQueryLog } from "./admin";
 
-const GEMINI_MODEL = "gemini-2.5-pro";
+const GEMINI_MODEL = "gemini-1.5-flash"; 
 const OPENAI_MODEL = "gpt-4o-mini";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function getGeminiApiKey() {
-  if (process.env.GOOGLE_GENAI_API_KEY) {
-    return process.env.GOOGLE_GENAI_API_KEY;
-  }
-
-  // Fallback: explicitly load .env in case runtime cwd differs.
-  dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-  if (process.env.GOOGLE_GENAI_API_KEY) {
-    return process.env.GOOGLE_GENAI_API_KEY;
-  }
-
-  // Fallback for compiled server path: dist/server -> project root
-  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-  return process.env.GOOGLE_GENAI_API_KEY;
+  return process.env.GOOGLE_GENAI_API_KEY || "";
 }
 
 function getOpenAiApiKey() {
-  if (process.env.OPENAI_API_KEY) {
-    return process.env.OPENAI_API_KEY;
-  }
-
-  dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-  if (process.env.OPENAI_API_KEY) {
-    return process.env.OPENAI_API_KEY;
-  }
-
-  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-  return process.env.OPENAI_API_KEY;
+  return process.env.OPENAI_API_KEY || "";
 }
 
 function buildSystemInstruction(language: "en" | "hi") {
