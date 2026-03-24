@@ -104,8 +104,8 @@ export default function ReportScam() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setSubmitError("Image must be less than 5MB");
+    if (file.size > 4 * 1024 * 1024) {
+      setSubmitError("Image must be less than 4MB (Vercel limit)");
       return;
     }
 
@@ -142,14 +142,8 @@ export default function ReportScam() {
       setSubmitting(true);
       const payload: ScamReportInput = {
         ...form,
-        amount:
-          form.amount === undefined || Number.isNaN(form.amount)
-            ? undefined
-            : Number(form.amount),
-        reporterAge:
-          form.reporterAge === undefined || Number.isNaN(form.reporterAge)
-            ? undefined
-            : Number(form.reporterAge),
+        amount: Number(form.amount) || undefined,
+        reporterAge: Number(form.reporterAge) || undefined,
         url: form.url?.trim() || undefined,
         email: form.email?.trim() || undefined,
         phoneNumber: form.phoneNumber?.trim() || undefined,
