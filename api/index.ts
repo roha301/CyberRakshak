@@ -12,4 +12,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-export default app;
+export default function handler(req: any, res: any) {
+  // Ensure serverless environment compatibility
+  return app(req, res);
+}
