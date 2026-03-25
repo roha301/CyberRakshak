@@ -16,3 +16,9 @@ export default function handler(req: any, res: any) {
   // Ensure serverless environment compatibility
   return app(req, res);
 }
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
