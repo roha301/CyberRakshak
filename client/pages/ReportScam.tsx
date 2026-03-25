@@ -104,20 +104,33 @@ export default function ReportScam() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 4 * 1024 * 1024) {
-      setSubmitError("Image must be less than 4MB (Vercel limit)");
+    // Quick early rejection for very large files
+    if (file.size > 2 * 1024 * 1024) {
+      setSubmitError("Image must be less than 2MB. Please resize it and try again.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateField("screenshotBase64", reader.result as string);
+    try {
+      // Compress via canvas to keep payload under Vercel's 4.5MB limit
+      const bitmap = await createImageBitmap(file);
+      const MAX_DIM = 1200;
+      const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+      const w = Math.round(bitmap.width * scale);
+      const h = Math.round(bitmap.height * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+
+      const compressed = canvas.toDataURL("image/jpeg", 0.75);
+      updateField("screenshotBase64", compressed);
       setSubmitError(null);
-    };
-    reader.onerror = () => {
-      setSubmitError("Failed to read image file");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setSubmitError("Failed to process image. Please try a different file.");
+    }
   }
 
   function validate(): string | null {

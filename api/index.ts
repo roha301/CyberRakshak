@@ -1,4 +1,3 @@
-import serverless from "serverless-http";
 import { createServer } from "../server/index";
 
 const app = createServer();
@@ -13,4 +12,4 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-export default serverless(app);
+export default app;

@@ -1,19 +1,18 @@
 import { NextFunction, Request, RequestHandler, Response } from "express";
+import jwt from "jsonwebtoken";
 import { scamReportsStore } from "./scam-report";
 import { liveAlertsStore } from "./live-alerts";
 import { quizAttemptsStore, quizQuestionsStore } from "./quiz";
 
 const ADMIN_USERNAME = "CyberRakshak_21";
 const ADMIN_PASSWORD = "CyberRakshak@1234";
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+// TTL: 12 hours in seconds (JWT uses seconds)
+const SESSION_TTL_S = 12 * 60 * 60;
 const LOGIN_MAX_ATTEMPTS = 3;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
-type SessionRecord = {
-  token: string;
-  createdAt: number;
-  expiresAt: number;
-};
+// JWT secret — set JWT_SECRET in Vercel environment variables for security
+const JWT_SECRET = process.env.JWT_SECRET || "cyberrakshak-default-secret-change-in-production";
 
 type AiQueryLog = {
   id: string;
@@ -61,7 +60,7 @@ type Faq = {
   updatedAt: string;
 };
 
-const adminSessions = new Map<string, SessionRecord>();
+// loginAttempts is still in-memory — acceptable since it's a soft protection
 const loginAttempts = new Map<
   string,
   { count: number; lockedUntil: number }
@@ -127,12 +126,12 @@ function readAuthToken(req: Request) {
   return auth.slice("Bearer ".length).trim();
 }
 
-function cleanupSessions() {
-  const now = Date.now();
-  for (const [token, session] of adminSessions.entries()) {
-    if (session.expiresAt <= now) {
-      adminSessions.delete(token);
-    }
+function verifyAdminToken(token: string): boolean {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { username: string };
+    return payload.username === ADMIN_USERNAME;
+  } catch {
+    return false;
   }
 }
 
@@ -227,9 +226,8 @@ export function getAdminFaqEntries() {
 }
 
 export const requireAdminAuth: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
-  cleanupSessions();
   const token = readAuthToken(req);
-  if (!token || !adminSessions.has(token)) {
+  if (!token || !verifyAdminToken(token)) {
     return res.status(401).json({ error: "Unauthorized admin access" });
   }
   next();
@@ -266,30 +264,25 @@ export const handleAdminLogin: RequestHandler = (req, res) => {
 
   loginAttempts.delete(attemptKey);
 
-  const token = generateId("admin-token");
-  const createdAt = Date.now();
-  adminSessions.set(token, {
-    token,
-    createdAt,
-    expiresAt: createdAt + SESSION_TTL_MS,
+  // Sign a JWT — works across serverless cold starts
+  const token = jwt.sign({ username: ADMIN_USERNAME }, JWT_SECRET, {
+    expiresIn: SESSION_TTL_S,
   });
   return res.json({
     token,
     username: ADMIN_USERNAME,
-    expiresInMs: SESSION_TTL_MS,
+    expiresInMs: SESSION_TTL_S * 1000,
   });
 };
 
 export const handleAdminSession: RequestHandler = (req, res) => {
-  cleanupSessions();
   const token = readAuthToken(req);
-  const active = Boolean(token && adminSessions.has(token));
+  const active = Boolean(token && verifyAdminToken(token));
   res.json({ active, username: active ? ADMIN_USERNAME : null });
 };
 
-export const handleAdminLogout: RequestHandler = (req, res) => {
-  const token = readAuthToken(req);
-  if (token) adminSessions.delete(token);
+// Logout is stateless with JWT — client just discards the token
+export const handleAdminLogout: RequestHandler = (_req, res) => {
   res.json({ success: true });
 };
 
