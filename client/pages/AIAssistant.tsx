@@ -35,54 +35,7 @@ const quickPromptsHi = [
   "मज़बूत पासवर्ड बनाने के सुझाव",
 ];
 
-const cyberKeywords = [
-  "cyber",
-  "phish",
-  "malware",
-  "ransomware",
-  "scam",
-  "fraud",
-  "hacked",
-  "hack",
-  "breach",
-  "password",
-  "otp",
-  "2fa",
-  "mfa",
-  "firewall",
-  "virus",
-  "trojan",
-  "spyware",
-  "identity theft",
-  "data leak",
-  "cybercrime",
-  "url",
-  "link",
-  "email security",
-  "social engineering",
-  "network attack",
-  "ddos",
-  "xss",
-  "sql injection",
-  "cyber security",
-  "साइबर",
-  "फिशिंग",
-  "रैनसमवेयर",
-  "स्कैम",
-  "फ्रॉड",
-  "हैक",
-  "पासवर्ड",
-  "ओटीपी",
-  "धोखाधड़ी",
-  "डेटा लीक",
-  "लिंक",
-  "सुरक्षा",
-];
 
-function isCybercrimePrompt(text: string) {
-  const normalized = text.toLowerCase();
-  return cyberKeywords.some((keyword) => normalized.includes(keyword));
-}
 
 export default function AIAssistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -157,17 +110,6 @@ export default function AIAssistant() {
     const newMessages = [...messages, { role: "user" as const, content: userText }];
     setMessages(newMessages);
     setInput("");
-
-    if (!isCybercrimePrompt(userText)) {
-      const scopeMessage =
-        language === "en"
-          ? "I can only answer questions related to cybercrime and cybersecurity. Please ask about scams, phishing, passwords, hacking, fraud, malware, or online safety."
-          : "मैं केवल साइबरक्राइम और साइबर सुरक्षा से जुड़े प्रश्नों का उत्तर देता हूँ। कृपया स्कैम, फिशिंग, पासवर्ड, हैकिंग, फ्रॉड, मैलवेयर या ऑनलाइन सुरक्षा से जुड़ा प्रश्न पूछें।";
-      setMessages([...newMessages, { role: "assistant", content: scopeMessage }]);
-      lastAssistantMessageRef.current = scopeMessage;
-      return;
-    }
-
     setIsGenerating(true);
     try {
       const response = await fetch("/api/ai-assistant/chat", {

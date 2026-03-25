@@ -5,23 +5,25 @@ import jwt
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import google.generativeai as genai
+import google.genai as genai
+from google.genai import types as genai_types
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Configuration
 JWT_SECRET = os.environ.get("JWT_SECRET", "cyber-rakshak-super-secret-key-21")
 ADMIN_USERNAME = "CyberRakshak_21"
 ADMIN_PASSWORD = "CyberRakshak@1234"
-GEMINI_API_KEY = os.environ.get("GOOGLE_GENAI_API_KEY")
+GEMINI_API_KEY = os.environ.get("GOOGLE_GENAI_API_KEY", "")
 
+client = None
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- MOCK DATABASES ---
 
-# 1. Cybercrime Types (Restored from Node)
+# 1. Cybercrime Types
 CRIME_TYPES = [
     {
         "id": "phishing",
@@ -112,7 +114,7 @@ CRIME_TYPES = [
         "emoji": "📱",
         "description": "Fraudulent transactions using Unified Payments Interface in India",
         "examples": [
-            "QR code scams donde el monto incorrecto se transfiere",
+            "QR code scams where the incorrect amount is transferred",
             "Fake UPI apps that steal bank details",
             "SMS-based scams requesting UPI approval"
         ],
@@ -157,7 +159,7 @@ CRIME_TYPES = [
     }
 ]
 
-# 2. Live Alerts (Restored from Node)
+# 2. Live Alerts
 LIVE_ALERTS = [
     {
         "id": "alert-001",
@@ -205,7 +207,7 @@ LIVE_ALERTS = [
     }
 ]
 
-# 3. Quiz Questions (Restored from Node)
+# 3. Quiz Questions
 QUIZ_QUESTIONS = [
     {
         "id": "q1",
@@ -263,7 +265,7 @@ QUIZ_QUESTIONS = [
     }
 ]
 
-# 4. Safety Checklist (Restored from Node)
+# 4. Safety Checklist
 SAFETY_CHECKLIST = [
     {
         "id": "account-security",
@@ -297,7 +299,6 @@ SAFETY_CHECKLIST = [
 # In-memory stores for dynamic data
 scam_reports_store = []
 ai_queries_store = []
-quiz_attempts_store = []
 
 # --- HELPERS ---
 
@@ -312,7 +313,7 @@ def authenticate_token():
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return payload
-    except:
+    except Exception:
         return None
 
 # --- API ROUTES ---
@@ -325,20 +326,22 @@ def ping():
 def get_crime_types():
     return jsonify({"data": CRIME_TYPES})
 
-@app.route("/api/cybercrime-types/<id>", methods=["GET"])
-def get_crime_type(id):
-    item = next((ct for ct in CRIME_TYPES if ct["id"] == id), None)
-    if not item: return jsonify({"error": "Not found"}), 404
+@app.route("/api/cybercrime-types/<string:crime_id>", methods=["GET"])
+def get_crime_type(crime_id):
+    item = next((ct for ct in CRIME_TYPES if ct["id"] == crime_id), None)
+    if not item:
+        return jsonify({"error": "Not found"}), 404
     return jsonify(item)
 
 @app.route("/api/live-alerts", methods=["GET"])
 def get_alerts():
     return jsonify({"data": LIVE_ALERTS, "total": len(LIVE_ALERTS)})
 
-@app.route("/api/live-alerts/<id>", methods=["GET"])
-def get_alert(id):
-    item = next((a for a in LIVE_ALERTS if a["id"] == id), None)
-    if not item: return jsonify({"error": "Not found"}), 404
+@app.route("/api/live-alerts/<string:alert_id>", methods=["GET"])
+def get_alert(alert_id):
+    item = next((a for a in LIVE_ALERTS if a["id"] == alert_id), None)
+    if not item:
+        return jsonify({"error": "Not found"}), 404
     return jsonify(item)
 
 @app.route("/api/safety-checklist", methods=["GET"])
@@ -354,7 +357,7 @@ def get_quiz():
 
 @app.route("/api/scam-report", methods=["POST"])
 def submit_report():
-    data = request.json or {}
+    data = request.get_json(force=True, silent=True) or {}
     report_id = generate_id("REPORT")
     report = {
         "id": report_id,
@@ -363,36 +366,58 @@ def submit_report():
         **data
     }
     scam_reports_store.append(report)
-    return jsonify({"success": True, "reportId": report_id, "message": f"Reported recorded: {report_id}"}), 201
+    return jsonify({"success": True, "reportId": report_id, "message": f"Report recorded: {report_id}"}), 201
 
-# AI CHAT - Using Gemini with paragraph format
+# AI CHAT — Gemini 1.5 Flash
 @app.route("/api/ai-assistant/chat", methods=["POST"])
 def ai_chat():
-    data = request.json or {}
-    prompt = data.get("prompt", "").strip()
+    data = request.get_json(force=True, silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
     lang = data.get("language", "en")
-    
+
     if not prompt:
-        return jsonify({"error": "Prompt required"}), 400
+        return jsonify({"error": "Prompt is required"}), 400
 
     reply = ""
-    if GEMINI_API_KEY:
+    if client:
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            sys_instruct = (
-                "You are CyberRakshak, a global cybersecurity expert assistant. Answer any questions related to "
-                "cybercrime or digital safety. IMPORTANT: Answer in a SINGLE, FLOWING PARAGRAPH. DO NOT use bullets, "
-                "lists, or bold formatting for lists. Be professional and direct. "
-                f"Reply in {'Hindi' if lang == 'hi' else 'English'}."
+            system_instruction = (
+                "You are CyberRakshak, an expert AI assistant specialising in cybersecurity, "
+                "cybercrime prevention, digital safety, and online fraud awareness. "
+                "Answer every question thoroughly yet concisely. "
+                "Respond in flowing paragraphs — DO NOT use bullet points, numbered lists, or markdown bold/italic formatting. "
+                f"Always reply in {'Hindi' if lang == 'hi' else 'English'}."
             )
-            response = model.generate_content(f"{sys_instruct}\n\nUser Question: {prompt}")
-            reply = response.text.replace("\n", " ").replace("*", "").replace("- ", "").strip()
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7,
+                )
+            )
+            raw = response.text or ""
+            # Strip markdown formatting artifacts
+            reply = (
+                raw.replace("**", "")
+                   .replace("* ", "")
+                   .replace("- ", "")
+                   .replace("\n\n", " ")
+                   .replace("\n", " ")
+                   .strip()
+            )
         except Exception as e:
-            print(f"Gemini Error: {e}")
-            reply = "I encountered an error connecting to my AI core. Please try again or check your safety settings."
+            print(f"[Gemini Error] {e}")
+            reply = (
+                "I'm having trouble connecting to my AI core right now. "
+                "Please ensure you have a stable internet connection and try again."
+            )
     else:
-        # Fallback local logic
-        reply = "Gemini AI is not configured. Please stay safe by using strong passwords and 2FA."
+        reply = (
+            "The AI service is not configured. "
+            "For now, remember: always use strong unique passwords, enable two-factor authentication, "
+            "and never share your OTP or UPI PIN with anyone."
+        )
 
     ai_queries_store.insert(0, {
         "id": generate_id("aiq"),
@@ -406,30 +431,35 @@ def ai_chat():
 # Admin Login
 @app.route("/api/admin/login", methods=["POST"])
 def admin_login():
-    data = request.json or {}
+    data = request.get_json(force=True, silent=True) or {}
     if data.get("username") == ADMIN_USERNAME and data.get("password") == ADMIN_PASSWORD:
-        token = jwt.encode({
-            "user": ADMIN_USERNAME,
-            "exp": datetime.utcnow() + timedelta(hours=24)
-        }, JWT_SECRET, algorithm="HS256")
+        token = jwt.encode(
+            {"user": ADMIN_USERNAME, "exp": datetime.utcnow() + timedelta(hours=24)},
+            JWT_SECRET,
+            algorithm="HS256"
+        )
         return jsonify({"success": True, "token": token})
     return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
 @app.route("/api/admin/session", methods=["GET"])
 def admin_session():
     user = authenticate_token()
-    if user: return jsonify({"authenticated": True, "user": user})
+    if user:
+        return jsonify({"authenticated": True, "user": user})
     return jsonify({"authenticated": False}), 401
 
 @app.route("/api/admin/dashboard", methods=["GET"])
 def admin_dashboard():
-    if not authenticate_token(): return jsonify({"error": "Unauthorized"}), 401
+    if not authenticate_token():
+        return jsonify({"error": "Unauthorized"}), 401
     return jsonify({
         "stats": {
             "totalReports": len(scam_reports_store),
             "totalAiQueries": len(ai_queries_store),
             "activeAlerts": len(LIVE_ALERTS)
-        }
+        },
+        "recentReports": scam_reports_store[:10],
+        "recentAiQueries": ai_queries_store[:10]
     })
 
 # Error Handlers
@@ -437,8 +467,9 @@ def admin_dashboard():
 def not_found(e):
     return jsonify({"error": "Not Found"}), 404
 
-def handler(req, res):
-    return app(req, res)
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return jsonify({"error": "Method Not Allowed"}), 405
 
 if __name__ == "__main__":
-    app.run(port=8080)
+    app.run(host="0.0.0.0", port=5000, debug=True)
