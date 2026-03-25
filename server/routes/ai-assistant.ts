@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { AiAssistantRequest, AiAssistantResponse } from "@shared/api";
+import { AiAssistantRequest, AiAssistantResponse } from "../../shared/api";
 import { getAdminFaqEntries, recordAiQueryLog } from "./admin";
 
 function buildSystemInstruction(language: "en" | "hi") {

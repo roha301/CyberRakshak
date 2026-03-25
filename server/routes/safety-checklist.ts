@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { ChecklistResponse } from "@shared/api";
+import { ChecklistResponse } from "../../shared/api";
 
 // Mock database
 const checklistItems = [

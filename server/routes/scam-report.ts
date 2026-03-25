@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { ScamReportInput, ScamReportResponse } from "@shared/api";
+import { ScamReportInput, ScamReportResponse } from "../../shared/api";
 
 export type ModerationStatus = "pending" | "approved" | "rejected" | "investigating";
 export type AuthenticityStatus = "unverified" | "verified" | "suspected-fake";

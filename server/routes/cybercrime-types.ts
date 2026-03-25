@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { CrimeTypesResponse } from "@shared/api";
+import { CrimeTypesResponse } from "../../shared/api";
 
 // Mock database
 const crimeTypes = [

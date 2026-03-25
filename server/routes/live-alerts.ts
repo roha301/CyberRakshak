@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { LiveAlertsResponse } from "@shared/api";
+import { LiveAlertsResponse } from "../../shared/api";
 
 export interface LiveAlertRecord {
   id: string;

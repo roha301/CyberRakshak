@@ -1,5 +1,5 @@
 import { RequestHandler } from "express";
-import { QuizResponse, QuizResultResponse } from "@shared/api";
+import { QuizResponse, QuizResultResponse } from "../../shared/api";
 
 export interface QuizAttemptRecord {
   id: string;
