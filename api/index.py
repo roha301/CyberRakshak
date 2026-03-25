@@ -3,6 +3,11 @@ import time
 import uuid
 import jwt
 import re
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -12,6 +17,13 @@ CORS(app)
 JWT_SECRET = os.environ.get("JWT_SECRET", "cyberrakshak-default-secret-change-in-production")
 ADMIN_USERNAME = "CyberRakshak_21"
 ADMIN_PASSWORD = "CyberRakshak@1234"
+
+GEMINI_API_KEY = os.environ.get("GOOGLE_GENAI_API_KEY")
+if GEMINI_API_KEY and genai:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+    except Exception:
+        pass
 
 scam_reports_store = []
 live_alerts_store = [
@@ -97,7 +109,7 @@ def get_recent_reports():
 # -------- AI ASSISTANT --------
 CYBER_KEYWORDS = {
     "phishing": ["phish", "email", "fake link", "click", "suspicious link", "spam", "lottery"],
-    "upi_fraud": ["upi", "qrcode", "qr", "gpay", "paytm", "phonepe", "money deducted", "bank fraud", "otp", "pin", "payment"],
+    "upi_fraud": ["upi", "qrcode", "qr", "gpay", "paytm", "phonepe", "deduct", "bank fraud", "otp", "pin", "payment"],
     "ransomware": ["ransom", "encrypt", "files locked", "pay money to unlock", "decrypt", "extort"],
     "identity_theft": ["identity", "fake profile", "impersonat", "stolen ssn", "stolen pan", "stolen aadhar", "credit card"],
     "job_scam": ["job offer", "work from home scam", "telegram job", "whatsapp job", "send money for job", "part time scam", "recruiter", "investment"],
@@ -110,30 +122,30 @@ CYBER_KEYWORDS = {
 
 RESPONSES = {
     "en": {
-        "phishing": "🎣 **Phishing Scams**:\n1. Never click on unknown links or download unexpected attachments.\n2. Always verify the sender's email address.\n3. Legitimate banks will never ask for your password or OTP.\n4. If you clicked a link, disconnect from the internet, run a malware scan, and change your passwords.",
-        "upi_fraud": "📱 **UPI/Banking Fraud**:\n1. Never share your OTP or UPI PIN with anyone.\n2. You do NOT need to enter your UPI PIN to *receive* money.\n3. Always verify the merchant name before scanning a QR code.\n4. If scammed, immediately block your account and dial **1930** to report cyber fraud.",
-        "ransomware": "🔒 **Ransomware**:\n1. Do not pay the ransom; there is no guarantee you will get your data back.\n2. Disconnect the infected device from your network immediately.\n3. Restore your files from an offline backup if available.\n4. Report the incident to your local cybercrime cell.",
-        "identity_theft": "👤 **Identity Theft**:\n1. Freeze your credit reports immediately.\n2. Change passwords for all your online accounts.\n3. Notify your bank and credit card companies.\n4. File a police report and keep a copy for disputes.",
-        "job_scam": "💼 **Job Scams**:\n1. Legitimate companies will NEVER ask you to pay money to get a job.\n2. Beware of unsolicited 'Work from Home' offers on WhatsApp or Telegram.\n3. Do not share your bank account details for 'salary drops' before signing official paperwork.",
-        "hacked": "⚠️ **Account Hacked**:\n1. Try to reset your password using your recovery email or phone number.\n2. Log out of all active sessions in the account settings.\n3. Enable Two-Factor Authentication (2FA) immediately.\n4. Inform your contacts so they don't fall for scams pretending to be you.",
-        "cyberbullying": "🛑 **Cyberbullying / Harassment**:\n1. Do not engage or reply to the harasser.\n2. Take screenshots of all abusive messages and profiles as evidence.\n3. Block and report the account on the platform.\n4. Report severe harassment or blackmail to the national cybercrime portal.",
-        "malware": "🦠 **Malware / Virus**:\n1. Disconnect your device from the internet to stop data theft.\n2. Boot your computer in Safe Mode.\n3. Run a full scan using a reputable Antivirus software.\n4. Keep your Operating System and apps updated to avoid vulnerabilities.",
-        "deepfake": "🎭 **Deepfakes / AI Impersonation**:\n1. If a 'friend' or 'relative' asks for urgent money via video/audio, hang up and call them back on their regular number.\n2. Ask a personal question only they would know.\n3. Look for unnatural blinking, skin tones, or audio glitches.",
-        "general_safety": "🛡️ **General Cyber Safety**:\n1. Use strong, unique passwords for every account (12+ chars with symbols).\n2. Enable Two-Factor Authentication (2FA) everywhere.\n3. Never share your OTP, PIN, or passwords.\n4. Think twice before clicking any links.",
-        "fallback": "Hello! I am a Cybersecurity Assistant. Please ask me about phishing, UPI fraud, hacked accounts, malware, job scams, deepfakes, or digital safety tips!"
+        "phishing": "Phishing scams trick you into revealing sensitive information. Never click on unknown links or download unexpected attachments, and always verify the sender's email address since legitimate banks will never ask for your password or OTP. If you accidentally clicked a link, disconnect from the internet immediately, run a malware scan, and change your passwords to stay safe.",
+        "upi_fraud": "For UPI and banking fraud, remember to never share your OTP or UPI PIN with anyone, as you absolutely do not need to enter your PIN just to receive money. Always verify the merchant name carefully before scanning any QR code. If you suspect you have been scammed, immediately block your bank account and dial 1930 to report the cyber fraud.",
+        "ransomware": "If you are hit by ransomware, do not pay the ransom because there is no guarantee you will get your data back. Immediately disconnect the infected device from your network to prevent the virus from spreading. You should restore your files from an offline backup if you have one, and report the incident to your local cybercrime cell.",
+        "identity_theft": "To handle identity theft, you must freeze your credit reports immediately to stop new accounts from being opened. Change the passwords for all your online accounts and notify your bank and credit card companies about the theft. Finally, file a police report and keep a copy to help with any future fraud disputes.",
+        "job_scam": "Job scams are very common on messaging apps. Legitimate companies will never ask you to pay money to get a job or receive training. Beware of unsolicited 'Work from Home' offers on WhatsApp or Telegram, and do not share your bank account details for supposed salary drops before signing official paperwork.",
+        "hacked": "If your account is hacked, try to reset your password using your recovery email or phone number as soon as possible. Log out of all active sessions in your account settings and enable Two-Factor Authentication immediately. It is also important to inform your contacts so they do not fall for scams pretending to be you.",
+        "cyberbullying": "For cyberbullying or online harassment, the best approach is to never engage or reply to the harasser. Take clear screenshots of all abusive messages and profiles to keep as evidence. Block and report the abusive account on the respective platform, and report severe harassment or blackmail to the national cybercrime portal.",
+        "malware": "If your device has malware or a virus, disconnect it from the internet right away to stop any data theft from occurring. Boot your computer in Safe Mode and run a full system scan using a reputable Antivirus software. Regularly update your Operating System and apps to avoid future vulnerabilities.",
+        "deepfake": "Deepfakes and AI voice clones are increasingly used to impersonate loved ones. If a friend or relative asks for urgent money via video or audio call, hang up and call them back on their regular trusted number. You can verify their identity by asking a personal question only they would know, or looking for unnatural blinking and audio glitches.",
+        "general_safety": "For general cyber safety, always use strong, unique passwords for every account that are at least 12 characters long with symbols. Enable Two-Factor Authentication everywhere available and never share your OTP, PIN, or passwords with anyone. Always think twice before clicking any links online.",
+        "fallback": "Hello! I am a Cybersecurity Assistant. I can help you understand and prevent cybercrimes like phishing, UPI fraud, hacked accounts, malware, job scams, and deepfakes. Please ask me your security questions, and I will guide you safely."
     },
     "hi": {
-        "phishing": "🎣 **Phishing Scams (धोखाधड़ी)**:\n1. कभी भी अनजान लिंक पर क्लिक न करें।\n2. हमेशा भेजने वाले का असली ईमेल पता वेरिफाई करें।\n3. बैंक कभी भी आपका पासवर्ड या OTP नहीं मांगते हैं।\n4. यदि आपने किसी लिंक पर क्लिक कर दिया है, तो इंटरनेट बंद करें और एंटीवायरस स्कैन चलाएं।",
-        "upi_fraud": "📱 **UPI / बैंकिंग फ्रॉड**:\n1. अपना OTP या UPI PIN कभी किसी के साथ शेयर न करें।\n2. आपको पैसे *प्राप्त* करने के लिए अपना UPI PIN डालने की आवश्यकता नहीं है।\n3. QR कोड स्कैन करने से पहले हमेशा नाम वेरिफाई करें।\n4. फ्रॉड होने पर तुरंत **1930** डायल करें और अपनी बैंक को सूचित करें।",
-        "ransomware": "🔒 **रैनसमवेयर (Ransomware)**:\n1. हैकर्स को पैसे न दें; डेटा वापस मिलने की कोई गारंटी नहीं होती।\n2. संक्रमित डिवाइस को तुरंत नेटवर्क से डिस्कनेक्ट करें।\n3. अपने ऑफलाइन बैकअप से अपनी फाइलों को रिस्टोर करें।\n4. स्थानीय साइबर क्राइम सेल में शिकायत दर्ज करें।",
-        "identity_theft": "👤 **पहचान की चोरी (Identity Theft)**:\n1. तुरंत अपने बैंक और क्रेडिट कार्ड कंपनियों को सूचित करें।\n2. अपने सभी ऑनलाइन खातों के पासवर्ड बदलें।\n3. अपनी क्रेडिट रिपोर्ट की निगरानी करें।\n4. पुलिस में FIR दर्ज कराएं।",
-        "job_scam": "💼 **जॉब स्कैम (Job Scams)**:\n1. असली कंपनियां कभी भी नौकरी देने के लिए पैसे नहीं मांगती हैं।\n2. WhatsApp या Telegram पर 'Work from Home' के अनचाहे ऑफर्स से सावधान रहें।\n3. बिना आधिकारिक कागजी कार्रवाई के अपने बैंक विवरण शेयर न करें।",
-        "hacked": "⚠️ **अकाउंट हैक (Account Hacked)**:\n1. रिकवरी ईमेल या फोन नंबर का उपयोग करके अपना पासवर्ड रीसेट करने का प्रयास करें।\n2. सभी डिवाइसों से लॉग आउट करें।\n3. तुरंत टू-फैक्टर ऑथेंटिकेशन (2FA) चालू करें।\n4. अपने दोस्तों को सूचित करें ताकि वे आपके अकाउंट से आने वाले किसी स्कैम में न फंसें।",
-        "cyberbullying": "🛑 **साइबरबुलिंग / उत्पीड़न**:\n1. ब्लैकमेलर या उत्पीड़न करने वाले को जवाब न दें।\n2. सबूत के तौर पर सभी मैसेजेस और प्रोफाइल का स्क्रीनशॉट लें।\n3. सोशल मीडिया प्लेटफॉर्म पर उस अकाउंट को ब्लॉक और रिपोर्ट करें।\n4. गंभीर मामलों की रिपोर्ट राष्ट्रीय साइबर अपराध पोर्टल पर करें।",
-        "malware": "🦠 **मैलवेयर / वायरस**:\n1. डेटा चोरी रोकने के लिए डिवाइस को तुरंत इंटरनेट से डिस्कनेक्ट करें।\n2. एक मजबूत एंटीवायरस से फुल स्कैन करें।\n3. हमेशा अपने ऐप्स और ऑपरेटिंग सिस्टम को अपडेट रखें।",
-        "deepfake": "🎭 **डीपफेक (AI Voice/Video)**:\n1. यदि कोई 'रिश्तेदार' या 'दोस्त' वीडियो/ऑडियो कॉल पर पैसे मांगता है, तो कॉल काटें और उन्हें उनके असली नंबर पर वापस कॉल करें।\n2. कोई ऐसा सवाल पूछें जो सिर्फ उन्हें पता हो।\n3. वीडियो में अप्राकृतिक पलक झपकने या ऑडियो में गड़बड़ी पर ध्यान दें।",
-        "general_safety": "🛡️ **सुरक्षा के सामान्य नियम**:\n1. हर अकाउंट के लिए मजबूत और अलग पासवर्ड का उपयोग करें।\n2. सभी जगह Two-Factor Authentication (2FA) चालू रखें।\n3. अपना OTP, PIN या पासवर्ड कभी शेयर न करें।\n4. किसी भी लिंक पर क्लिक करने से पहले सोचें।",
-        "fallback": "नमस्ते! मैं एक साइबर सुरक्षा सहायक हूँ। कृपया मुझसे फिशिंग, UPI फ्रॉड, हैक हुए अकाउंट, जॉब स्कैम, या डिजिटल सुरक्षा के बारे में सवाल पूछें!"
+        "phishing": "फ़िशिंग घोटाले आपको संवेदनशील जानकारी बताने के लिए बरगलाते हैं। कभी भी अनजान लिंक पर क्लिक न करें या अनपेक्षित अटैचमेंट डाउनलोड न करें, और हमेशा भेजने वाले का ईमेल पता सत्यापित करें क्योंकि असली बैंक कभी आपका पासवर्ड या ओटीपी नहीं मांगेंगे। यदि आपने गलती से किसी लिंक पर क्लिक कर दिया है, तो तुरंत इंटरनेट बंद कर दें, एंटीवायरस स्कैन चलाएं, और सुरक्षित रहने के लिए अपने पासवर्ड बदल लें।",
+        "upi_fraud": "UPI और बैंकिंग धोखाधड़ी के लिए, याद रखें कि आप अपना OTP या UPI पिन किसी के साथ साझा न करें, क्योंकि आपको केवल पैसे प्राप्त करने के लिए अपना पिन दर्ज करने की आवश्यकता नहीं है। किसी भी QR कोड को स्कैन करने से पहले हमेशा व्यापारी का नाम ध्यान से जांचें। यदि आपको लगता है कि आपके साथ धोखाधड़ी हुई है, तो तुरंत अपने बैंक खाते को ब्लॉक करें और साइबर अपराध की रिपोर्ट करने के लिए 1930 डायल करें।",
+        "ransomware": "यदि आप रैंसमवेयर की चपेट में आ गए हैं, तो फिरौती न दें क्योंकि इसकी कोई गारंटी नहीं है कि आपको अपना डेटा वापस मिल जाएगा। वायरस को फैलने से रोकने के लिए तुरंत संक्रमित उपकरण को अपने नेटवर्क से डिस्कनेक्ट कर लें। यदि आपके पास कोई ऑफ़लाइन बैकअप है तो आपको अपनी फ़ाइलों को उससे पुनर्स्थापित करना चाहिए, और स्थानीय साइबर अपराध सेल में घटना की रिपोर्ट करनी चाहिए।",
+        "identity_theft": "पहचान की चोरी से निपटने के लिए, आपको नए खातों को खोलने से रोकने के लिए अपनी क्रेडिट रिपोर्ट को तुरंत फ्रीज कर देना चाहिए। अपने सभी ऑनलाइन खातों के पासवर्ड बदल लें और चोरी के बारे में अपने बैंक और क्रेडिट कार्ड कंपनियों को सूचित करें। अंत में, एक पुलिस रिपोर्ट दर्ज करें और भविष्य के किसी भी धोखाधड़ी विवाद में मदद के लिए एक प्रति अपने पास रखें।",
+        "job_scam": "मैसेजिंग ऐप पर नौकरी के घोटाले बहुत आम हैं। वैध कंपनियां आपको नौकरी पाने या प्रशिक्षण प्राप्त करने के लिए कभी भी पैसे देने के लिए नहीं कहेंगी। व्हाट्सएप या टेलीग्राम पर अनचाहे 'वर्क फ्रॉम होम' प्रस्तावों से सावधान रहें, और आधिकारिक कागजी कार्रवाई पर हस्ताक्षर करने से पहले कभी भी अपने बैंक खाते का विवरण साझा न करें।",
+        "hacked": "यदि आपका खाता हैक हो गया है, तो जल्द से जल्द अपने रिकवरी ईमेल या फोन नंबर का उपयोग करके अपना पासवर्ड रीसेट करने का प्रयास करें। अपने खाते की सेटिंग में सभी सक्रिय सत्रों से लॉग आउट करें और तुरंत टू-फैक्टर ऑथेंटिकेशन सक्षम करें। अपने संपर्कों को सूचित करना भी महत्वपूर्ण है ताकि वे आपके होने का दिखावा करने वाले घोटालों में न फंसें।",
+        "cyberbullying": "साइबरबुलिंग या ऑनलाइन उत्पीड़न के लिए, सबसे अच्छा तरीका है कि आप कभी भी उत्पीड़न करने वाले से बात न करें या उसे जवाब न दें। सबूत के तौर पर रखने के लिए सभी अपमानजनक संदेशों और प्रोफाइल के स्पष्ट स्क्रीनशॉट लें। संबंधित प्लेटफॉर्म पर अपमानजनक खाते को ब्लॉक करें और रिपोर्ट करें, और राष्ट्रीय साइबर अपराध पोर्टल पर गंभीर उत्पीड़न या ब्लैकमेल की रिपोर्ट करें।",
+        "malware": "यदि आपके उपकरण में मैलवेयर या वायरस है, तो किसी भी डेटा चोरी को होने से रोकने के लिए इसे तुरंत इंटरनेट से डिस्कनेक्ट कर दें। अपने कंप्यूटर को सेफ मोड में बूट करें और एक विश्वसनीय एंटीवायरस सॉफ़्टवेयर का उपयोग करके पूर्ण सिस्टम स्कैन चलाएं। भविष्य की कमजोरियों से बचने के लिए अपने ऑपरेटिंग सिस्टम और ऐप्स को नियमित रूप से अपडेट करें।",
+        "deepfake": "डीपफेक और एआई वॉयस क्लोन का इस्तेमाल धोखाधड़ी के लिए तेजी से किया जा रहा है। यदि कोई दोस्त या रिश्तेदार वीडियो या ऑडियो कॉल के माध्यम से तत्काल पैसे मांगता है, तो फोन काट दें और उन्हें उनके नियमित विश्वसनीय नंबर पर वापस कॉल करें। आप उनकी पहचान को एक ऐसा व्यक्तिगत प्रश्न पूछकर सत्यापित कर सकते हैं जिसे केवल वे ही जानेंगे।",
+        "general_safety": "सामान्य साइबर सुरक्षा के लिए, हमेशा हर खाते के लिए मजबूत, अद्वितीय पासवर्ड का उपयोग करें जो कम से कम 12 अक्षर लंबे हों और उसमें प्रतीक शामिल हों। हर जगह उपलब्ध टू-फैक्टर ऑथेंटिकेशन को सक्षम करें और कभी भी अपना ओटीपी, पिन या पासवर्ड किसी के साथ साझा न करें। ऑनलाइन किसी भी लिंक पर क्लिक करने से पहले हमेशा दो बार सोचें।",
+        "fallback": "नमस्ते! मैं एक साइबर सुरक्षा सहायक हूं। मैं आपको फ़िशिंग, यूपीआई धोखाधड़ी, हैक किए गए खाते, मैलवेयर, नौकरी के घोटाले और डीपफेक जैसे साइबर अपराधों को समझने और रोकने में मदद कर सकता हूं। कृपया मुझसे अपने सुरक्षा प्रश्न पूछें, और मैं आपको सुरक्षित रूप से मार्गदर्शन करूंगा।"
     }
 }
 
@@ -145,24 +157,39 @@ def ai_chat():
     
     raw_lang = data.get("language", "en")
     lang = str(raw_lang) if raw_lang else "en"
+    reply = ""
+
+    # Call Gemini Generative AI if key is present
+    if GEMINI_API_KEY and genai and prompt:
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            sys_instruct = f"You are CyberRakshak, a cybersecurity expert assistant. Answer ONLY cybercrime or cybersecurity related questions globally. Answer concisely in a flowing paragraph format ONLY; DO NOT use bullet points, numbered lists, or markdown lists. NEVER use line breaks. Answer as a continuous paragraph. If the user asks something completely unrelated to cyber security or scams, politely decline. Reply purely in {'Hindi' if lang == 'hi' else 'English'}."
+            response = model.generate_content(f"{sys_instruct}\n\nUser Question: {prompt}")
+            reply = response.text
+            # Final sanity check to remove asterisks or bullet styles
+            reply = reply.replace("- ", "").replace("* ", "").replace("*", "").strip()
+        except Exception as e:
+            print("Gemini API Error:", e)
+            reply = ""
     
-    # Keyword detection algorithm
-    matched_category = ""
-    max_matches = 0
-    
-    for category, keywords in CYBER_KEYWORDS.items():
-        matches = sum(1 for kw in keywords if kw in prompt)
-        if matches > max_matches:
-            max_matches = matches
-            matched_category = category
-            
-    if max_matches == 0:
-        if "hello" in prompt or "hi" in prompt or "help" in prompt:
-            reply = RESPONSES.get(lang, RESPONSES["en"])["fallback"]
+    # Keyword detection algorithm fallback
+    if not reply:
+        matched_category = ""
+        max_matches = 0
+        
+        for category, keywords in CYBER_KEYWORDS.items():
+            matches = sum(1 for kw in keywords if kw in prompt)
+            if matches > max_matches:
+                max_matches = matches
+                matched_category = category
+                
+        if max_matches == 0:
+            if "hello" in prompt or "hi" in prompt or "help" in prompt:
+                reply = RESPONSES.get(lang, RESPONSES["en"])["fallback"]
+            else:
+                reply = RESPONSES.get(lang, RESPONSES["en"])["fallback"]
         else:
-            reply = RESPONSES.get(lang, RESPONSES["en"])["fallback"]
-    else:
-        reply = RESPONSES.get(lang, RESPONSES["en"])[matched_category]
+            reply = RESPONSES.get(lang, RESPONSES["en"])[matched_category]
     
     ai_queries_store.insert(0, {
         "id": generate_id("aiq"),
