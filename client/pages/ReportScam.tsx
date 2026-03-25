@@ -33,6 +33,7 @@ const scamTypes = [
 
 const defaultForm: ScamReportInput = {
   reporterName: "",
+  reporterEmail: "",
   type: "",
   description: "",
   incidentDate: "",
@@ -137,6 +138,7 @@ export default function ReportScam() {
     if (!form.type) return "Please select scam type.";
     if (!form.description.trim()) return "Please describe what happened.";
     if (!form.incidentDate) return "Please provide the incident date.";
+    if (!form.reporterEmail.trim()) return "Please provide your email address.";
     if (form.amount !== undefined && form.amount < 0) return "Amount cannot be negative.";
     return null;
   }
@@ -155,6 +157,7 @@ export default function ReportScam() {
       setSubmitting(true);
       const payload: ScamReportInput = {
         ...form,
+        reporterEmail: form.reporterEmail.trim(),
         amount: Number(form.amount) || undefined,
         reporterAge: Number(form.reporterAge) || undefined,
         url: form.url?.trim() || undefined,
@@ -242,7 +245,7 @@ export default function ReportScam() {
           >
             <h2 className="text-xl font-bold">Incident Details</h2>
 
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-3 gap-4">
               <div>
                 <label className="text-sm font-semibold block mb-2">Your Name (optional)</label>
                 <input
@@ -251,6 +254,18 @@ export default function ReportScam() {
                   onChange={(e) => updateField("reporterName", e.target.value)}
                   className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3"
                   placeholder="e.g. John Doe"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold block mb-2">Your Email *</label>
+                <input
+                  type="email"
+                  value={form.reporterEmail}
+                  onChange={(e) => updateField("reporterEmail", e.target.value)}
+                  className="w-full bg-black/30 border border-cyan-500/20 rounded-lg p-3"
+                  placeholder="you@example.com"
+                  required
                 />
               </div>
 

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const ADMIN_TOKEN_KEY = "cyber_admin_token";
 
@@ -21,6 +22,7 @@ type ReportFilter = "all" | AdminReportStatus;
 type AdminReport = {
   id: string;
   reporterName?: string;
+  reporterEmail: string;
   reporterAge?: number;
   type: string;
   description: string;
@@ -36,6 +38,7 @@ type AdminReport = {
   moderationStatus: AdminReportStatus;
   authenticity: AdminAuthenticity;
   moderatorNote?: string;
+  moderatedAt?: string;
 };
 
 type DashboardData = {
@@ -49,6 +52,17 @@ type DashboardData = {
   reportStatusCounts?: Record<string, number>;
   commonScamTypes?: Array<{ type: string; count: number }>;
   recentReports?: AdminReport[];
+  approvedHistory?: Array<{
+    id: number;
+    reportId: string;
+    action: string;
+    authenticity: AdminAuthenticity;
+    moderatorNote: string;
+    timestamp: string;
+    type: string;
+    description: string;
+    reporterEmail: string;
+  }>;
 };
 
 export default function AdminDashboard() {
@@ -192,8 +206,12 @@ export default function AdminDashboard() {
         throw new Error(data.error || "Failed to update report");
       }
       await loadAllData();
+      const nextStatus = payload.moderationStatus || "updated";
+      toast.success(`Report ${reportId} marked as ${capitalize(nextStatus)}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update report");
+      const message = err instanceof Error ? err.message : "Failed to update report";
+      setError(message);
+      toast.error(message);
     } finally {
       setActionId(null);
     }
@@ -237,6 +255,7 @@ export default function AdminDashboard() {
         report.type,
         report.description,
         report.reporterName,
+        report.reporterEmail,
         report.email,
         report.phoneNumber,
         report.url,
@@ -245,6 +264,31 @@ export default function AdminDashboard() {
         .some((value) => String(value).toLowerCase().includes(query));
     });
   }, [reports, searchQuery, statusFilter]);
+
+  const approvedHistory = useMemo(() => {
+    if (dashboard?.approvedHistory?.length) {
+      return dashboard.approvedHistory;
+    }
+    return reports
+      .filter((report) => report.moderationStatus === "approved")
+      .sort(
+        (left, right) =>
+          new Date(right.moderatedAt || right.timestamp).getTime() -
+          new Date(left.moderatedAt || left.timestamp).getTime(),
+      )
+      .slice(0, 8)
+      .map((report, index) => ({
+        id: index + 1,
+        reportId: report.id,
+        action: "approved",
+        authenticity: report.authenticity,
+        moderatorNote: report.moderatorNote || "",
+        timestamp: report.moderatedAt || report.timestamp,
+        type: report.type,
+        description: report.description,
+        reporterEmail: report.reporterEmail,
+      }));
+  }, [dashboard, reports]);
 
   if (!loggedIn) {
     return (
@@ -283,6 +327,14 @@ export default function AdminDashboard() {
               <p className="text-xs text-foreground/55">
                 Sign in to review scam reports and update their moderation status.
               </p>
+              <div className="rounded-lg border border-cyan-500/20 bg-black/20 px-3 py-3 text-xs text-foreground/70 space-y-1">
+                <p>
+                  Admin Username: <span className="text-cyan-300">CyberRakshak_21</span>
+                </p>
+                <p>
+                  Admin Password: <span className="text-cyan-300">CyberRakshak@1234</span>
+                </p>
+              </div>
               {error && <p className="text-red-300 text-sm">{error}</p>}
               <button
                 onClick={handleLogin}
@@ -414,9 +466,10 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <ActionButton
-                        label="Approve"
+                        label={report.moderationStatus === "approved" ? "Approved" : "Approve"}
                         tone="success"
-                        disabled={actionId === report.id}
+                        loading={actionId === report.id}
+                        disabled={actionId === report.id || report.moderationStatus === "approved"}
                         onClick={() =>
                           updateReport(report.id, {
                             moderationStatus: "approved",
@@ -425,9 +478,16 @@ export default function AdminDashboard() {
                         }
                       />
                       <ActionButton
-                        label="Investigate"
+                        label={
+                          report.moderationStatus === "investigating"
+                            ? "Investigating"
+                            : "Investigate"
+                        }
                         tone="warning"
-                        disabled={actionId === report.id}
+                        loading={actionId === report.id}
+                        disabled={
+                          actionId === report.id || report.moderationStatus === "investigating"
+                        }
                         onClick={() =>
                           updateReport(report.id, {
                             moderationStatus: "investigating",
@@ -435,9 +495,10 @@ export default function AdminDashboard() {
                         }
                       />
                       <ActionButton
-                        label="Reject"
+                        label={report.moderationStatus === "rejected" ? "Rejected" : "Reject"}
                         tone="danger"
-                        disabled={actionId === report.id}
+                        loading={actionId === report.id}
+                        disabled={actionId === report.id || report.moderationStatus === "rejected"}
                         onClick={() =>
                           updateReport(report.id, {
                             moderationStatus: "rejected",
@@ -452,6 +513,7 @@ export default function AdminDashboard() {
 
                   <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
                     <MetaItem label="Reporter" value={report.reporterName || "Anonymous"} />
+                    <MetaItem label="Reporter Email" value={report.reporterEmail || "N/A"} />
                     <MetaItem label="Age" value={report.reporterAge ? String(report.reporterAge) : "N/A"} />
                     <MetaItem label="User ID" value={report.userId || "anonymous"} />
                     <MetaItem
@@ -471,6 +533,12 @@ export default function AdminDashboard() {
                     <MetaItem label="Email" value={report.email || "N/A"} />
                     <MetaItem label="Phone" value={report.phoneNumber || "N/A"} />
                   </div>
+
+                  {report.moderatedAt && (
+                    <div className="rounded-lg border border-cyan-500/15 bg-black/20 px-3 py-2 text-sm text-foreground/75">
+                      Last moderation update: {new Date(report.moderatedAt).toLocaleString()}
+                    </div>
+                  )}
 
                   {report.screenshotBase64 && (
                     <div>
@@ -502,6 +570,34 @@ export default function AdminDashboard() {
                 ))}
                 {commonScamTypes.length === 0 && (
                   <p className="text-sm text-foreground/60">No report trends available yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20">
+              <h2 className="text-lg font-bold mb-3">Approved History</h2>
+              <div className="space-y-3">
+                {approvedHistory.map((item) => (
+                  <div
+                    key={`${item.reportId}-${item.id}`}
+                    className="rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-green-200">{item.type}</p>
+                      <span className="text-xs text-green-100/80">
+                        {new Date(item.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-foreground/80 line-clamp-3">{item.description}</p>
+                    <p className="mt-2 text-xs text-foreground/60">
+                      {item.reportId} | {item.reporterEmail || "No reporter email"}
+                    </p>
+                  </div>
+                ))}
+                {approvedHistory.length === 0 && (
+                  <p className="text-sm text-foreground/60">
+                    Approved reports will appear here once moderation is completed.
+                  </p>
                 )}
               </div>
             </div>
@@ -592,11 +688,13 @@ function ActionButton({
   tone,
   onClick,
   disabled,
+  loading,
 }: {
   label: string;
   tone: "success" | "warning" | "danger";
   onClick: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   const classes = {
     success: "border-green-500/30 text-green-300 hover:bg-green-500/10",
@@ -610,7 +708,7 @@ function ActionButton({
       disabled={disabled}
       className={`px-3 py-2 rounded-lg border text-sm transition disabled:opacity-50 ${classes[tone]}`}
     >
-      {disabled ? "Saving..." : label}
+      {loading ? "Saving..." : label}
     </button>
   );
 }

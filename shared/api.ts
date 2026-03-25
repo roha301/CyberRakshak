@@ -81,6 +81,7 @@ export interface QuizResultResponse {
 /* ============ SCAM REPORT ============ */
 export interface ScamReportInput {
   reporterName?: string;
+  reporterEmail: string;
   reporterAge?: number;
   type: string;
   description: string;
