@@ -2,6 +2,7 @@ import os
 import time
 import uuid
 import jwt
+from collections import Counter
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -300,10 +301,109 @@ SAFETY_CHECKLIST = [
 scam_reports_store = []
 ai_queries_store = []
 
+REPORT_RECOMMENDATIONS = {
+    "phishing": [
+        "Change passwords for any account you entered on the suspicious site or message.",
+        "Contact the affected bank or platform and ask them to secure the account immediately.",
+        "Do not click follow-up links or reply to the scammer.",
+    ],
+    "upi fraud": [
+        "Call your bank or payment provider immediately and report the unauthorized transaction.",
+        "Block the compromised account or app session if available.",
+        "Save transaction IDs, messages, and screenshots for investigation.",
+    ],
+    "identity theft": [
+        "Reset passwords for email, banking, and social accounts first.",
+        "Review recent account activity and lock compromised services.",
+        "Collect proof of fake profiles, account changes, or fraudulent transactions.",
+    ],
+    "job scam": [
+        "Stop further communication and do not pay additional fees.",
+        "Keep the job post, email thread, payment proofs, and call details.",
+        "Warn the platform where the fake listing appeared.",
+    ],
+    "sms fraud": [
+        "Block the sender and avoid tapping any links from the message.",
+        "Review bank, wallet, and email access for unusual activity.",
+        "Report the SMS to your carrier or the relevant platform if possible.",
+    ],
+    "account compromise": [
+        "Reset the password immediately and sign out of other active sessions.",
+        "Enable two-factor authentication before reusing the account.",
+        "Check recovery email, phone number, and linked devices for tampering.",
+    ],
+}
+
+COMMON_CONTACTS = {
+    "bank": "Use the official support number listed in your banking app or on your card.",
+    "platform": "Use the verified support page of the affected app, marketplace, or social platform.",
+    "cybercrime": "Report the incident through your local cybercrime reporting channel or police cyber cell.",
+}
+
 # --- HELPERS ---
 
 def generate_id(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def latest_reports(limit=None):
+    reports = sorted(
+        scam_reports_store,
+        key=lambda report: report.get("timestamp", ""),
+        reverse=True
+    )
+    if limit is None:
+        return reports
+    return reports[:limit]
+
+
+def normalize_report_payload(payload):
+    cleaned = {}
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+        cleaned[key] = value
+    return cleaned
+
+
+def get_report(report_id):
+    return next((report for report in scam_reports_store if report["id"] == report_id), None)
+
+
+def report_status_counts():
+    return dict(Counter(
+        report.get("moderationStatus") or report.get("status", "pending")
+        for report in scam_reports_store
+    ))
+
+
+def report_type_counts():
+    return dict(Counter(
+        report.get("type", "Unknown")
+        for report in scam_reports_store
+        if report.get("type")
+    ))
+
+
+def recommendation_bundle(report_type):
+    normalized_type = (report_type or "").strip().lower()
+    recommendations = REPORT_RECOMMENDATIONS.get(
+        normalized_type,
+        [
+            "Stop contact with the scammer and preserve every available proof.",
+            "Secure the impacted account, card, or device before using it again.",
+            "Report the incident to the affected provider and your local cybercrime authority.",
+        ],
+    )
+    return {
+        "type": report_type or "General Scam",
+        "recommendations": recommendations,
+        "contactNumbers": COMMON_CONTACTS,
+    }
 
 def authenticate_token():
     auth_header = request.headers.get("Authorization")
@@ -359,14 +459,52 @@ def get_quiz():
 def submit_report():
     data = request.get_json(force=True, silent=True) or {}
     report_id = generate_id("REPORT")
+    cleaned_data = normalize_report_payload(data)
     report = {
         "id": report_id,
         "timestamp": datetime.now().isoformat(),
         "status": "pending",
-        **data
+        "moderationStatus": "pending",
+        "authenticity": "unverified",
+        "moderatorNote": "",
+        "userId": cleaned_data.get("userId", "anonymous"),
+        **cleaned_data
     }
     scam_reports_store.append(report)
     return jsonify({"success": True, "reportId": report_id, "message": f"Report recorded: {report_id}"}), 201
+
+
+@app.route("/api/scam-report/<string:report_id>", methods=["GET"])
+def get_report_status(report_id):
+    report = get_report(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+    return jsonify({
+        "reportId": report["id"],
+        "status": report.get("moderationStatus") or report.get("status", "pending"),
+        "submittedDate": report["timestamp"],
+        "description": report.get("description", ""),
+        "type": report.get("type", "Unknown"),
+    })
+
+
+@app.route("/api/scam-report-stats", methods=["GET"])
+def get_report_stats():
+    return jsonify({
+        "total": len(scam_reports_store),
+        "byType": report_type_counts(),
+    })
+
+
+@app.route("/api/scam-recommendations", methods=["GET"])
+def get_scam_recommendations():
+    report_type = request.args.get("type", "")
+    return jsonify(recommendation_bundle(report_type))
+
+
+@app.route("/api/recent-reports", methods=["GET"])
+def get_recent_reports():
+    return jsonify({"data": latest_reports(limit=10)})
 
 # AI CHAT — Gemini 1.5 Flash
 @app.route("/api/ai-assistant/chat", methods=["POST"])
@@ -445,22 +583,79 @@ def admin_login():
 def admin_session():
     user = authenticate_token()
     if user:
-        return jsonify({"authenticated": True, "user": user})
+        return jsonify({"authenticated": True, "active": True, "user": user})
     return jsonify({"authenticated": False}), 401
+
+
+@app.route("/api/admin/logout", methods=["POST"])
+def admin_logout():
+    if not authenticate_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"success": True})
 
 @app.route("/api/admin/dashboard", methods=["GET"])
 def admin_dashboard():
     if not authenticate_token():
         return jsonify({"error": "Unauthorized"}), 401
+    type_counts = report_type_counts()
+    status_counts = report_status_counts()
     return jsonify({
-        "stats": {
-            "totalReports": len(scam_reports_store),
-            "totalAiQueries": len(ai_queries_store),
+        "metrics": {
+            "totalScamReports": len(scam_reports_store),
+            "pendingReports": status_counts.get("pending", 0),
+            "reviewedReports": len(scam_reports_store) - status_counts.get("pending", 0),
+            "aiQueries": len(ai_queries_store),
             "activeAlerts": len(LIVE_ALERTS)
         },
-        "recentReports": scam_reports_store[:10],
+        "reportStatusCounts": status_counts,
+        "commonScamTypes": [
+            {"type": scam_type, "count": count}
+            for scam_type, count in sorted(type_counts.items(), key=lambda item: item[1], reverse=True)
+        ],
+        "recentReports": latest_reports(limit=10),
         "recentAiQueries": ai_queries_store[:10]
     })
+
+
+@app.route("/api/admin/reports", methods=["GET"])
+def admin_reports():
+    if not authenticate_token():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"data": latest_reports()})
+
+
+@app.route("/api/admin/reports/<string:report_id>", methods=["PATCH"])
+def admin_update_report(report_id):
+    if not authenticate_token():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    report = get_report(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+
+    data = request.get_json(force=True, silent=True) or {}
+    allowed_statuses = {"pending", "approved", "rejected", "investigating"}
+    allowed_authenticity = {"unverified", "verified", "suspected-fake"}
+
+    moderation_status = data.get("moderationStatus")
+    authenticity = data.get("authenticity")
+    moderator_note = data.get("moderatorNote")
+
+    if moderation_status is not None:
+        if moderation_status not in allowed_statuses:
+            return jsonify({"error": "Invalid moderation status"}), 400
+        report["moderationStatus"] = moderation_status
+        report["status"] = moderation_status
+
+    if authenticity is not None:
+        if authenticity not in allowed_authenticity:
+            return jsonify({"error": "Invalid authenticity value"}), 400
+        report["authenticity"] = authenticity
+
+    if moderator_note is not None:
+        report["moderatorNote"] = str(moderator_note).strip()
+
+    return jsonify({"success": True, "data": report})
 
 # Error Handlers
 @app.errorhandler(404)

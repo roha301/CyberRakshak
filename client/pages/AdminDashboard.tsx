@@ -1,14 +1,22 @@
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { Shield, AlertTriangle, BarChart3, LogOut, Eye, EyeOff } from "lucide-react";
-
-type AdminTab =
-  | "dashboard"
-  | "reports"
-  | "alerts"
-  | "analytics";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  LogOut,
+  RefreshCw,
+  Search,
+  Shield,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 
 const ADMIN_TOKEN_KEY = "cyber_admin_token";
+
+type AdminReportStatus = "pending" | "approved" | "rejected" | "investigating";
+type AdminAuthenticity = "unverified" | "verified" | "suspected-fake";
+type ReportFilter = "all" | AdminReportStatus;
 
 type AdminReport = {
   id: string;
@@ -19,57 +27,59 @@ type AdminReport = {
   userId: string;
   screenshotBase64?: string;
   timestamp: string;
-  moderationStatus: "pending" | "approved" | "rejected" | "investigating";
-  authenticity: "unverified" | "verified" | "suspected-fake";
+  incidentDate?: string;
+  amount?: number;
+  url?: string;
+  email?: string;
+  phoneNumber?: string;
+  reportedTo?: string;
+  moderationStatus: AdminReportStatus;
+  authenticity: AdminAuthenticity;
   moderatorNote?: string;
 };
 
-type AdminAlert = {
-  id: string;
-  title: string;
-  description: string;
-  severity: "low" | "medium" | "high" | "critical";
-  type: string;
-  targetAudience: string;
-  timestamp: string;
-};
-
-type AdminUser = {
-  id: string;
-  reportCount: number;
-  quizAttempts: number;
-  aiQueries: number;
-  lastActivity: string;
+type DashboardData = {
+  metrics?: {
+    totalScamReports?: number;
+    pendingReports?: number;
+    reviewedReports?: number;
+    aiQueries?: number;
+    activeAlerts?: number;
+  };
+  reportStatusCounts?: Record<string, number>;
+  commonScamTypes?: Array<{ type: string; count: number }>;
+  recentReports?: AdminReport[];
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<AdminTab>("dashboard");
-  const [token, setToken] = useState<string>("");
+  const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [dashboard, setDashboard] = useState<any>(null);
-  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [reports, setReports] = useState<AdminReport[]>([]);
-  const [alerts, setAlerts] = useState<AdminAlert[]>([]);
-  const [analytics, setAnalytics] = useState<any>(null);
-
-  const [newAlert, setNewAlert] = useState({
-    title: "",
-    description: "",
-    severity: "medium",
-    type: "",
-    targetAudience: "",
-  });
+  const [statusFilter, setStatusFilter] = useState<ReportFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    const storedToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+    if (!storedToken) return;
+    setToken(storedToken);
+    verifySession(storedToken);
   }, []);
+
+  function authHeaders(sessionToken = token) {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    };
+  }
 
   async function verifySession(sessionToken: string) {
     try {
@@ -77,20 +87,18 @@ export default function AdminDashboard() {
         headers: { Authorization: `Bearer ${sessionToken}` },
       });
       const data = await response.json();
-      if (data.active) {
-        setLoggedIn(true);
-        await loadAllData(sessionToken);
+      if (!response.ok || !data.authenticated) {
+        throw new Error("Session expired. Please login again.");
       }
-    } catch {
-      // session invalid
+      setLoggedIn(true);
+      setError(null);
+      await loadAllData(sessionToken);
+    } catch (err) {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      setToken("");
+      setLoggedIn(false);
+      setError(err instanceof Error ? err.message : "Unable to verify admin session");
     }
-  }
-
-  function authHeaders(sessionToken = token) {
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${sessionToken}`,
-    };
   }
 
   async function handleLogin() {
@@ -103,7 +111,10 @@ export default function AdminDashboard() {
         body: JSON.stringify({ username, password }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Login failed");
+      if (!response.ok || !data.token) {
+        throw new Error(data.message || data.error || "Login failed");
+      }
+      localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
       setToken(data.token);
       setLoggedIn(true);
       await loadAllData(data.token);
@@ -121,8 +132,12 @@ export default function AdminDashboard() {
         headers: authHeaders(),
       }).catch(() => undefined);
     }
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
     setToken("");
     setLoggedIn(false);
+    setDashboard(null);
+    setReports([]);
+    setError(null);
   }
 
   async function loadAllData(sessionToken = token) {
@@ -131,75 +146,105 @@ export default function AdminDashboard() {
     setError(null);
     try {
       const headers = authHeaders(sessionToken);
-      const [dRes, uRes, rRes, aRes, anRes] = await Promise.all([
+      const [dashboardRes, reportsRes] = await Promise.all([
         fetch("/api/admin/dashboard", { headers }),
-        fetch("/api/admin/users", { headers }),
         fetch("/api/admin/reports", { headers }),
-        fetch("/api/admin/alerts", { headers }),
-        fetch("/api/admin/analytics", { headers }),
       ]);
 
-      if ([dRes, uRes, rRes, aRes].some((res) => res.status === 401)) {
+      if ([dashboardRes, reportsRes].some((response) => response.status === 401)) {
         throw new Error("Session expired. Please login again.");
       }
 
-      setDashboard(await dRes.json());
-      setUsers((await uRes.json()).data || []);
-      setReports((await rRes.json()).data || []);
-      setAlerts((await aRes.json()).data || []);
-      setAnalytics(await anRes.json());
+      const dashboardData = await dashboardRes.json();
+      const reportsData = await reportsRes.json();
+
+      if (!dashboardRes.ok) {
+        throw new Error(dashboardData.error || "Failed to load dashboard");
+      }
+      if (!reportsRes.ok) {
+        throw new Error(reportsData.error || "Failed to load reports");
+      }
+
+      setDashboard(dashboardData);
+      setReports(reportsData.data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load admin data");
+      const message = err instanceof Error ? err.message : "Failed to load admin data";
+      if (message.includes("Session expired")) {
+        await handleLogout();
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
   }
 
   async function updateReport(reportId: string, payload: Partial<AdminReport>) {
-    await fetch(`/api/admin/reports/${reportId}`, {
-      method: "PATCH",
-      headers: authHeaders(),
-      body: JSON.stringify(payload),
+    setActionId(reportId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/reports/${reportId}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update report");
+      }
+      await loadAllData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update report");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  const statusCounts = useMemo(() => {
+    if (dashboard?.reportStatusCounts) {
+      return dashboard.reportStatusCounts;
+    }
+    return reports.reduce<Record<string, number>>((acc, report) => {
+      acc[report.moderationStatus] = (acc[report.moderationStatus] || 0) + 1;
+      return acc;
+    }, {});
+  }, [dashboard, reports]);
+
+  const commonScamTypes = useMemo(() => {
+    if (dashboard?.commonScamTypes?.length) {
+      return dashboard.commonScamTypes;
+    }
+
+    const counts = reports.reduce<Record<string, number>>((acc, report) => {
+      acc[report.type] = (acc[report.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(counts)
+      .map(([type, count]) => ({ type, count }))
+      .sort((left, right) => right.count - left.count);
+  }, [dashboard, reports]);
+
+  const filteredReports = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return reports.filter((report) => {
+      const matchesStatus =
+        statusFilter === "all" ? true : report.moderationStatus === statusFilter;
+      if (!matchesStatus) return false;
+      if (!query) return true;
+
+      return [
+        report.id,
+        report.type,
+        report.description,
+        report.reporterName,
+        report.email,
+        report.phoneNumber,
+        report.url,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
     });
-    await loadAllData();
-  }
-
-  async function createAlert() {
-    await fetch("/api/admin/alerts", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify(newAlert),
-    });
-    setNewAlert({ title: "", description: "", severity: "medium", type: "", targetAudience: "" });
-    await loadAllData();
-  }
-
-  async function deleteAlert(id: string) {
-    await fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers: authHeaders() });
-    await loadAllData();
-  }
-
-  async function editAlert(alert: AdminAlert) {
-    const title = window.prompt("Edit alert title", alert.title);
-    if (!title) return;
-    const description = window.prompt("Edit alert description", alert.description);
-    if (!description) return;
-    await fetch(`/api/admin/alerts/${alert.id}`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify({ title, description }),
-    });
-    await loadAllData();
-  }
-
-  const reportStatusCounts = useMemo(
-    () =>
-      reports.reduce<Record<string, number>>((acc, report) => {
-        acc[report.moderationStatus] = (acc[report.moderationStatus] || 0) + 1;
-        return acc;
-      }, {}),
-    [reports]
-  );
+  }, [reports, searchQuery, statusFilter]);
 
   if (!loggedIn) {
     return (
@@ -209,19 +254,19 @@ export default function AdminDashboard() {
             <div className="text-center mb-5">
               <Shield className="w-10 h-10 text-cyan-300 mx-auto mb-2" />
               <h1 className="text-2xl font-bold">Admin Login</h1>
-              <p className="text-sm text-foreground/70">CyberRakshak control panel</p>
+              <p className="text-sm text-foreground/70">CyberRakshak report review console</p>
             </div>
             <div className="space-y-3">
               <input
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(event) => setUsername(event.target.value)}
                 placeholder="Username"
                 className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-3"
               />
               <div className="relative">
                 <input
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   placeholder="Password"
                   type={showPassword ? "text" : "password"}
                   className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-3 pr-12"
@@ -235,13 +280,9 @@ export default function AdminDashboard() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              <p className="text-xs text-foreground/50 mt-1">
-                Please type your admin username and password.
+              <p className="text-xs text-foreground/55">
+                Sign in to review scam reports and update their moderation status.
               </p>
-              <div className="bg-black/20 border border-cyan-500/10 rounded-lg px-3 py-2 text-xs text-foreground/60 space-y-1">
-                <p>🔑 <span className="text-cyan-300/80">Username:</span> CyberRakshak_21</p>
-                <p>🔒 <span className="text-cyan-300/80">Password:</span> CyberRakshak@1234</p>
-              </div>
               {error && <p className="text-red-300 text-sm">{error}</p>}
               <button
                 onClick={handleLogin}
@@ -261,16 +302,23 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-background pt-24 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           className="card-gradient p-4 rounded-xl border border-cyan-500/20 flex flex-wrap items-center justify-between gap-3"
         >
           <div>
             <h1 className="text-2xl font-bold">Admin Panel</h1>
-            <p className="text-foreground/70 text-sm">Complete platform control center</p>
+            <p className="text-foreground/70 text-sm">
+              Review submitted scam reports and keep moderation up to date.
+            </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => loadAllData()} className="px-3 py-2 rounded-lg border border-cyan-500/30 text-cyan-300">
+            <button
+              onClick={() => loadAllData()}
+              disabled={loading}
+              className="px-3 py-2 rounded-lg border border-cyan-500/30 text-cyan-300 inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
             <button
@@ -284,140 +332,190 @@ export default function AdminDashboard() {
         </motion.div>
 
         {error && <p className="text-red-300 text-sm">{error}</p>}
-        {loading && <p className="text-foreground/70 text-sm">Loading admin data...</p>}
 
-        <div className="flex flex-wrap gap-2">
-          {[
-            { key: "dashboard", label: "Dashboard", icon: BarChart3 },
-            { key: "reports", label: "Reports", icon: AlertTriangle },
-            { key: "alerts", label: "Threat Alerts", icon: AlertTriangle },
-            { key: "analytics", label: "Analytics", icon: BarChart3 },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                onClick={() => setTab(item.key as AdminTab)}
-                className={`px-3 py-2 rounded-lg border text-sm inline-flex items-center gap-2 ${
-                  tab === item.key
-                    ? "bg-cyan-500 text-black border-cyan-400"
-                    : "border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
-                }`}
-              >
-                <Icon size={15} />
-                {item.label}
-              </button>
-            );
-          })}
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <MetricCard
+            title="Total Reports"
+            value={String(dashboard?.metrics?.totalScamReports ?? reports.length)}
+          />
+          <MetricCard title="Pending" value={String(statusCounts.pending || 0)} />
+          <MetricCard title="Investigating" value={String(statusCounts.investigating || 0)} />
+          <MetricCard title="Approved" value={String(statusCounts.approved || 0)} />
         </div>
 
-        {tab === "dashboard" && (
-          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <MetricCard title="Total Scam Reports" value={String(dashboard?.metrics?.totalScamReports || 0)} />
-            <MetricCard title="Active Users" value={String(dashboard?.metrics?.activeUsers || 0)} />
-            <MetricCard title="Quiz Participation %" value={String(dashboard?.metrics?.quizParticipationRate || 0)} />
-            <MetricCard title="API Errors" value={String(dashboard?.metrics?.apiErrors || 0)} />
-          </div>
-        )}
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+          <section className="space-y-4">
+            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold">Reported Scams</h2>
+                  <p className="text-sm text-foreground/65">
+                    {filteredReports.length} of {reports.length} report
+                    {reports.length === 1 ? "" : "s"} shown
+                  </p>
+                </div>
+                <div className="relative min-w-[240px]">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/45"
+                  />
+                  <input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search by ID, type, name or description"
+                    className="w-full rounded-lg bg-black/30 border border-cyan-500/20 py-2 pl-9 pr-3"
+                  />
+                </div>
+              </div>
 
-        {tab === "reports" && (
-          <div className="space-y-4">
-            <div className="grid md:grid-cols-4 gap-3">
-              <MetricCard title="Pending" value={String(reportStatusCounts.pending || 0)} />
-              <MetricCard title="Approved" value={String(reportStatusCounts.approved || 0)} />
-              <MetricCard title="Rejected" value={String(reportStatusCounts.rejected || 0)} />
-              <MetricCard title="Investigating" value={String(reportStatusCounts.investigating || 0)} />
+              <div className="flex flex-wrap gap-2">
+                {(["all", "pending", "investigating", "approved", "rejected"] as ReportFilter[]).map(
+                  (filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setStatusFilter(filter)}
+                      className={`px-3 py-2 rounded-lg border text-sm transition ${
+                        statusFilter === filter
+                          ? "bg-cyan-500 text-black border-cyan-400"
+                          : "border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                      }`}
+                    >
+                      {filter === "all"
+                        ? "All"
+                        : `${capitalize(filter)} (${statusCounts[filter] || 0})`}
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
-            <div className="space-y-3">
-              {reports.map((report) => (
-                <div key={report.id} className="card-gradient p-4 rounded-xl border border-cyan-500/20">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="flex-1 mr-4">
-                      <p className="font-semibold">{report.type}</p>
-                      <p className="text-sm text-foreground/70">{report.description}</p>
-                      <div className="text-xs text-foreground/50 mt-2 space-y-1">
-                        <p>{report.id} | {new Date(report.timestamp).toLocaleString()}</p>
-                        {(report.reporterName || report.reporterAge) && (
-                          <p>
-                            Reporter Details: {report.reporterName || "N/A"} {report.reporterAge ? `(${report.reporterAge} yrs)` : ""}
-                          </p>
-                        )}
-                        <p>User ID: {report.userId}</p>
+
+            <div className="space-y-4">
+              {filteredReports.length === 0 && (
+                <div className="card-gradient p-6 rounded-xl border border-cyan-500/20 text-sm text-foreground/65">
+                  No scam reports match the current filters.
+                </div>
+              )}
+
+              {filteredReports.map((report) => (
+                <article
+                  key={report.id}
+                  className="card-gradient p-5 rounded-xl border border-cyan-500/20 space-y-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-lg">{report.type}</p>
+                        <StatusBadge status={report.moderationStatus} />
+                        <AuthenticityBadge authenticity={report.authenticity} />
                       </div>
-                      
-                      {report.screenshotBase64 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold mb-1 text-cyan-300">Screenshot:</p>
-                          <img src={report.screenshotBase64} alt="Scam Screenshot" className="max-w-xs rounded border border-cyan-500/20 shadow" />
-                        </div>
-                      )}
+                      <p className="text-sm text-foreground/60">
+                        {report.id} | Submitted {new Date(report.timestamp).toLocaleString()}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                       <button className="px-2 py-1 rounded border border-green-500/30 text-green-300 hover:bg-green-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "approved", authenticity: "verified" })}>Approve</button>
-                       <button className="px-2 py-1 rounded border border-red-500/30 text-red-300 hover:bg-red-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "rejected", authenticity: "suspected-fake" })}>Reject</button>
-                       <button className="px-2 py-1 rounded border border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10 transition" onClick={() => updateReport(report.id, { moderationStatus: "investigating" })}>Investigate</button>
+                      <ActionButton
+                        label="Approve"
+                        tone="success"
+                        disabled={actionId === report.id}
+                        onClick={() =>
+                          updateReport(report.id, {
+                            moderationStatus: "approved",
+                            authenticity: "verified",
+                          })
+                        }
+                      />
+                      <ActionButton
+                        label="Investigate"
+                        tone="warning"
+                        disabled={actionId === report.id}
+                        onClick={() =>
+                          updateReport(report.id, {
+                            moderationStatus: "investigating",
+                          })
+                        }
+                      />
+                      <ActionButton
+                        label="Reject"
+                        tone="danger"
+                        disabled={actionId === report.id}
+                        onClick={() =>
+                          updateReport(report.id, {
+                            moderationStatus: "rejected",
+                            authenticity: "suspected-fake",
+                          })
+                        }
+                      />
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {tab === "alerts" && (
-          <div className="grid lg:grid-cols-3 gap-4">
-            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20 space-y-2">
-              <h2 className="font-bold">Create Threat Alert</h2>
-              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Title" value={newAlert.title} onChange={(e) => setNewAlert((p) => ({ ...p, title: e.target.value }))} />
-              <textarea className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Description" value={newAlert.description} onChange={(e) => setNewAlert((p) => ({ ...p, description: e.target.value }))} />
-              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Type" value={newAlert.type} onChange={(e) => setNewAlert((p) => ({ ...p, type: e.target.value }))} />
-              <input className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" placeholder="Target Audience" value={newAlert.targetAudience} onChange={(e) => setNewAlert((p) => ({ ...p, targetAudience: e.target.value }))} />
-              <select className="w-full rounded-lg bg-black/30 border border-cyan-500/20 p-2" value={newAlert.severity} onChange={(e) => setNewAlert((p) => ({ ...p, severity: e.target.value as "low" | "medium" | "high" | "critical" }))}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-              <button onClick={createAlert} className="px-3 py-2 rounded-lg bg-cyan-500 text-black font-semibold">Publish Alert</button>
-            </div>
-            <div className="lg:col-span-2 space-y-2">
-              {alerts.map((alert) => (
-                <div key={alert.id} className="card-gradient p-4 rounded-xl border border-cyan-500/20 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{alert.title}</p>
-                    <p className="text-sm text-foreground/70">{alert.description}</p>
-                    <p className="text-xs text-foreground/50 mt-1">{alert.type} | {alert.targetAudience}</p>
+                  <p className="text-sm leading-6 text-foreground/90">{report.description}</p>
+
+                  <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
+                    <MetaItem label="Reporter" value={report.reporterName || "Anonymous"} />
+                    <MetaItem label="Age" value={report.reporterAge ? String(report.reporterAge) : "N/A"} />
+                    <MetaItem label="User ID" value={report.userId || "anonymous"} />
+                    <MetaItem
+                      label="Incident Date"
+                      value={report.incidentDate ? new Date(report.incidentDate).toLocaleDateString() : "N/A"}
+                    />
+                    <MetaItem
+                      label="Amount Lost"
+                      value={
+                        typeof report.amount === "number"
+                          ? report.amount.toLocaleString()
+                          : "N/A"
+                      }
+                    />
+                    <MetaItem label="Reported To" value={report.reportedTo || "N/A"} />
+                    <MetaItem label="Suspicious URL" value={report.url || "N/A"} />
+                    <MetaItem label="Email" value={report.email || "N/A"} />
+                    <MetaItem label="Phone" value={report.phoneNumber || "N/A"} />
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <button onClick={() => editAlert(alert)} className="px-2 py-1 rounded border border-cyan-500/30 text-cyan-300 text-xs hover:bg-cyan-500/10 transition">Edit</button>
-                    <button onClick={() => deleteAlert(alert.id)} className="px-2 py-1 rounded border border-red-500/30 text-red-300 text-xs hover:bg-red-500/10 transition">Delete</button>
+
+                  {report.screenshotBase64 && (
+                    <div>
+                      <p className="text-xs font-semibold mb-2 text-cyan-300">Attached Screenshot</p>
+                      <img
+                        src={report.screenshotBase64}
+                        alt={`Screenshot for ${report.id}`}
+                        className="max-h-72 rounded-lg border border-cyan-500/20"
+                      />
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="space-y-4">
+            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20">
+              <h2 className="text-lg font-bold mb-3">Most Reported Types</h2>
+              <div className="space-y-2">
+                {commonScamTypes.slice(0, 5).map((item) => (
+                  <div
+                    key={item.type}
+                    className="flex items-center justify-between rounded-lg border border-cyan-500/15 bg-black/20 px-3 py-2 text-sm"
+                  >
+                    <span>{item.type}</span>
+                    <span className="font-semibold">{item.count}</span>
                   </div>
-                </div>
-              ))}
+                ))}
+                {commonScamTypes.length === 0 && (
+                  <p className="text-sm text-foreground/60">No report trends available yet.</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
 
-        {tab === "analytics" && (
-          <div className="card-gradient p-5 rounded-xl border border-cyan-500/20">
-            <h2 className="text-xl font-bold mb-3">Analytics & Monitoring</h2>
-            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-              <MetricCard title="Total Scam Reports" value={String(analytics?.totalScamReports || 0)} />
-              <MetricCard title="Active Users" value={String(analytics?.activeUsers || 0)} />
-              <MetricCard title="Quiz Participation %" value={String(analytics?.quizParticipationRate || 0)} />
-              <MetricCard title="AI Queries" value={String(analytics?.aiQueries || 0)} />
+            <div className="card-gradient p-4 rounded-xl border border-cyan-500/20">
+              <h2 className="text-lg font-bold mb-3">Moderation Notes</h2>
+              <div className="space-y-3 text-sm text-foreground/70">
+                <p>Approve reports that look genuine and contain enough incident detail.</p>
+                <p>Move uncertain cases to investigating instead of rejecting them immediately.</p>
+                <p>Reject only when the report is clearly spam, empty, or obviously fake.</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              {(analytics?.commonScamTypes || []).map((item: any) => (
-                <div key={item.type} className="flex justify-between p-2 border border-cyan-500/20 rounded">
-                  <span>{item.type}</span>
-                  <span className="font-semibold">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -430,4 +528,93 @@ function MetricCard({ title, value }: { title: string; value: string }) {
       <p className="text-2xl font-bold">{value}</p>
     </div>
   );
+}
+
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-cyan-500/15 bg-black/20 px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-foreground/45">{label}</p>
+      <p className="mt-1 break-words text-foreground/90">{value}</p>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: AdminReportStatus }) {
+  const styles: Record<AdminReportStatus, string> = {
+    pending: "border-yellow-500/30 bg-yellow-500/10 text-yellow-200",
+    investigating: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
+    approved: "border-green-500/30 bg-green-500/10 text-green-200",
+    rejected: "border-red-500/30 bg-red-500/10 text-red-200",
+  };
+
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${styles[status]}`}>
+      {capitalize(status)}
+    </span>
+  );
+}
+
+function AuthenticityBadge({ authenticity }: { authenticity: AdminAuthenticity }) {
+  const config: Record<
+    AdminAuthenticity,
+    { icon: ReactNode; label: string; className: string }
+  > = {
+    unverified: {
+      icon: <AlertTriangle size={14} />,
+      label: "Unverified",
+      className: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+    },
+    verified: {
+      icon: <ShieldCheck size={14} />,
+      label: "Verified",
+      className: "border-green-500/30 bg-green-500/10 text-green-200",
+    },
+    "suspected-fake": {
+      icon: <XCircle size={14} />,
+      label: "Suspected Fake",
+      className: "border-red-500/30 bg-red-500/10 text-red-200",
+    },
+  };
+
+  const item = config[authenticity];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${item.className}`}
+    >
+      {item.icon}
+      {item.label}
+    </span>
+  );
+}
+
+function ActionButton({
+  label,
+  tone,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  tone: "success" | "warning" | "danger";
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const classes = {
+    success: "border-green-500/30 text-green-300 hover:bg-green-500/10",
+    warning: "border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/10",
+    danger: "border-red-500/30 text-red-300 hover:bg-red-500/10",
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-3 py-2 rounded-lg border text-sm transition disabled:opacity-50 ${classes[tone]}`}
+    >
+      {disabled ? "Saving..." : label}
+    </button>
+  );
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
